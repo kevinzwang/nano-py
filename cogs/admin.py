@@ -8,7 +8,7 @@ class Admin(commands.Cog):
     @commands.is_owner()
     async def quit(self, ctx):
         await ctx.send('gn')
-        await self.bot.logout()
+        await self.bot.close()
 
 def setup(bot):
     bot.add_cog(Admin(bot))
