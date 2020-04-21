@@ -32,13 +32,14 @@ class Nano(commands.Bot):
         self.command_prefix = (f'<@!{self.user.id}> ', f'<@{self.user.id}> ')
         await self.change_presence(activity=discord.Game('type `help!`'))
 
-        if hasattr(self, 'http_session'):
-            await self.http_session.close()
-        self.http_session = aiohttp.ClientSession()
-
         print('Nano is connected!')
 
+    async def on_connect(self):
+        print('Connecting...')
+        self.http_session = aiohttp.ClientSession()
+
     async def on_disconnect(self):
+        print('Disconnecting...')
         await self.http_session.close()
 
     async def on_message(self, msg):
