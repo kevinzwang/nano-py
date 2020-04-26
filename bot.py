@@ -8,6 +8,7 @@ import yaml
 
 extensions = (
     'cogs.admin',
+    'cogs.animu',
     'cogs.meta',
     'cogs.random',
     'cogs.weeb',
