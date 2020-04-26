@@ -12,6 +12,8 @@ from typing import Set, Dict
 class GameSettings:
     def __init__(self):
         self.anime_lists: Set[str] = {'top200'}
+        self.past_queue = asyncio.Queue()
+        self.past_set: Set[str] = set()
 
 class GameState:
     def __init__(self, channel: discord.VoiceChannel, loop: asyncio.Task):
@@ -68,45 +70,26 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         await player.connect(voice_channel.id)
 
         await text_channel.send(embed=rules)
-        await text_channel.send('Game will start in 5 seconds...')
+        await text_channel.send(embed=discord.Embed(
+            title='AniMu',
+            description=f'Game starting in 5 seconds...',
+            color=colors['info']
+        ))
 
         try:
             while True:
                 await asyncio.sleep(5)
-                anime_name, anime_id, theme_name, theme_url = await next_up
                 
-                track = None
-                while not track:
-                    search = f'ytsearch:{anime_name}'
-                    short_name = re.search('"([^"]*)"',theme_name)
-                    if short_name:
-                        if theme_name.startswith('OP'):
-                            search += ' OP'
-                        elif theme_name.startswith('ED'):
-                            search += ' ED'
+                anime, theme, track = await next_up
 
-                        search += ' ' + short_name.groups()[0]
-                    else:
-                        search += ' ' + theme_name
-                    
-                    attempts = 1
-                    while not track and attempts <= 3:
-                        track = await self.wavelink.get_tracks(search)
-                        attempts += 1
-
-                    if not track:
-                        anime_name, anime_id, theme_name, theme_url = await self._get_next_up(settings)
-                
-                await text_channel.send(f'Round {round_number} starting!')
-
-                await player.play(track[0])
+                await player.play(track)
                 future = self.bot.loop.create_future()
                 async def on_message(msg):
                     if msg.channel == text_channel and msg.content.endswith('?') and msg.author.voice and msg.author.voice.channel.id == voice_channel.id:
                         if msg.author not in scores:
                                 scores[msg.author] = 0
 
-                        if await self._find_anime(msg.content[:-1], anime_id):
+                        if await self._find_anime(msg.content[:-1], anime['idMal']):
                             await msg.add_reaction('✅')
                             scores[msg.author] += 10
                             future.set_result(msg.author)
@@ -114,31 +97,61 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             scores[msg.author] -= 5
                             await msg.add_reaction('❌')
                 self.bot.add_listener(on_message)
+                
                 next_up = self.bot.loop.create_task(self._get_next_up(settings))
+
                 try:
                     winner = await asyncio.wait_for(future, timeout=30)
-                    await text_channel.send(f'{winner.mention} got the right answer!')
+                    await text_channel.send(
+                        embed=discord.Embed(
+                            title=f'AniMu - Round {round_number} results',
+                            description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__!',
+                            color=colors['success']
+                        ).add_field(
+                            name='Scores',
+                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                        ).set_author(
+                            name=(winner.nick if winner.nick else winner.name) + ' got the right answer!', 
+                            icon_url=winner.avatar_url
+                        )
+                    )
                 except asyncio.TimeoutError:
-                    await text_channel.send('No correct answers :(')
-                self.bot.remove_listener(on_message)
+                    await text_channel.send(
+                        embed=discord.Embed(
+                            title=f'AniMu - Round {round_number} results',
+                            description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__!',
+                            color=colors['failure']
+                        ).add_field(
+                            name='Scores',
+                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                        ).set_author(
+                            name='Nobody got this round :(', 
+                        ).set_thumbnail(
+                            url=anime['coverImage']['extraLarge']
+                        )
+                    )
 
-                await text_channel.send(f'The song was **{theme_name}** from __{anime_name}__!\n\n__Scores:__\n{self._format_scores(scores)}\n\nVideo: {track[0].uri}')
-                await text_channel.send('Next round will start in 5 seconds...')
+                self.bot.remove_listener(on_message)
 
                 round_number += 1
 
         except asyncio.CancelledError:
             await player.disconnect()
-            await text_channel.send(f'__Final Scores:__\n{self._format_scores(scores)}')
+            await text_channel.send(
+                embed=discord.Embed(
+                    title=f'AniMu - Ending game',
+                    color=colors['info']
+                ).add_field(
+                    name='Final Scores',
+                    value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                )
+            )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```' + (anime_name, anime_id, theme_name, theme_url) + '```')
-
-    def _format_scores(self, scores: Dict[discord.Member, int]):
-        return '\n'.join([f'{player.nick if player.nick else player.name} - {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])])
+            await text_channel.send('```' + (anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '```')
 
     async def _get_next_up(self, settings: GameSettings):
-        """Returns the name of an anime, the MAL id of that anime, a theme name, and its corresponding url"""
+        """Returns data for an anime, a theme, and a wavelink track"""
         chosen_list = random.sample(settings.anime_lists, 1)[0]
         if chosen_list == 'top200':
             async with self.bot.http_session.post(api_url, json={
@@ -186,8 +199,46 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
             if themes:
                 chosen_theme = random.choice(themes)
-                print((chosen_anime['title']['romaji'], chosen_anime['idMal'], chosen_theme['name'], chosen_theme['url']))
-                return chosen_anime['title']['romaji'], chosen_anime['idMal'], chosen_theme['name'], chosen_theme['url']
+                
+                # avoid excessive duplication
+                if not chosen_theme['url'] in settings.past_set:
+                    ## now it's time to get the wavelink track
+                    search = f'ytsearch:{chosen_anime["title"]["romaji"]}'
+                    short_name = re.search('"([^"]*)"',chosen_theme['name'])
+                    if short_name:
+                        if chosen_theme['name'].startswith('OP'):
+                            search += ' OP'
+                        elif chosen_theme['name'].startswith('ED'):
+                            search += ' ED'
+
+                        search += ' ' + short_name.groups()[0]
+                    else:
+                        search += ' ' + chosen_theme['name']
+
+                    tracks = None
+                    # try youtube
+                    attempts = 1
+                    while not tracks and attempts <= 3:
+                        tracks = await self.wavelink.get_tracks(search)
+                        attempts += 1
+                            
+                    # try the given url as backup
+                    attempts = 1
+                    while not tracks and attempts <= 3:
+                        tracks = await self.wavelink.get_tracks(chosen_theme['url'])
+                        attempts += 1
+
+                    if tracks:
+                        # add the theme to our cache
+                        settings.past_set.add(chosen_theme['url'])
+                        await settings.past_queue.put(chosen_theme['url'])
+
+                        # rotate out the older ones
+                        if settings.past_queue.qsize() > 50:
+                            oldest = settings.past_queue.get()
+                            settings.past_set.remove(oldest)
+
+                        return chosen_anime, chosen_theme, tracks[0]
         
         return await self._get_next_up(settings) # in case there's no theme found for this 
 
@@ -209,6 +260,15 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 return True
 
         return False
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Exit game when there are no members left in the voice channel"""
+        if before.channel and (game := self.games.get(before.channel.guild.id)) and \
+            game.channel == before.channel and len(game.channel.members) == 1 and \
+            self.bot.user in game.channel.members:
+            
+            game.loop.cancel()            
 
     @commands.group(
         aliases=['am'],
@@ -306,25 +366,24 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 def setup(bot):
     bot.add_cog(AniMu(bot))
 
-
-embed_color = 0x4cca51 # anilist green
+colors = {
+    'info': 0xcc4dff,
+    'success': 0x4cca51,
+    'failure': 0xfc2626
+}
 icon_url = 'https://www.reddit.com/favicon.ico'
 api_url = 'https://graphql.anilist.co'
 
 rules = discord.Embed(
-    title='Anime Music Guessing Game',
-    color=embed_color,
+    title='AniMu (Anime Music Guessing Game)',
+    color=colors['info'],
     description=
 '''
-The game is simple: the bot plays a random anime theme, and players have 30 seconds to guess what it is.
-To guess, put a question mark at the end of your message, ex: `sao?`.
+The game is simple: the bot plays a random anime theme, and players have 30 seconds to guess what it is. To guess, put a question mark at the end of your message, ex: `sao?`.
 
-You get 10 points for a correct guess and lose 5 points for an incorrect guess. 
-You can guess as many times as you want, but keep an eye on those points!
+You get 10 points for a correct guess and lose 5 points for an incorrect guess. You can guess as many times as you want, but keep an eye on those points!
 
-Additionally, you can add and remove users (from AniList) to pull anime from in the game with the `am! addlist` and `am! removelist` commands. 
-The bot will get music from anime in the watching and completed lists of those users.
-There is also the special `top200` "user" which will get music from the top 200 most popular anime.
+Additionally, you can add and remove users (from AniList) to pull anime from in the game with the `am! addlist` and `am! removelist` commands. The bot will get music from anime in the watching and completed lists of those users. There is also the special `top200` "user" which will get music from the top 200 most popular anime.
 
 To start a game, type `am! start` while in a voice channel. You can end the game with `am! stop`. Have fun!
 '''
@@ -361,6 +420,9 @@ query RandomAnimeFromList($name: String) {
           title {
             romaji
           }
+          coverImage {
+            extraLarge
+          }
         }
       }
     }
@@ -376,6 +438,9 @@ query RandomAnimeFromTop($page: Int) {
       seasonYear
       title {
         romaji
+      }
+      coverImage {
+        extraLarge
       }
     }
   }
