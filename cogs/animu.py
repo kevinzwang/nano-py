@@ -75,6 +75,8 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             description=f'Game starting in 5 seconds...',
             color=colors['info']
         ))
+        
+        on_message = None
 
         try:
             while True:
@@ -136,7 +138,6 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 round_number += 1
 
         except asyncio.CancelledError:
-            await player.disconnect()
             await text_channel.send(
                 embed=discord.Embed(
                     title=f'AniMu - Ending game',
@@ -149,6 +150,10 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         except Exception as e:
             await text_channel.send(e)
             await text_channel.send('```' + (anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '```')
+        finally:
+            await player.disconnect()
+            if on_message:
+                await self.bot.remove_listener(on_message)
 
     async def _get_next_up(self, settings: GameSettings):
         """Returns data for an anime, a theme, and a wavelink track"""
@@ -235,7 +240,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
                         # rotate out the older ones
                         if settings.past_queue.qsize() > 50:
-                            oldest = settings.past_queue.get()
+                            oldest = await settings.past_queue.get()
                             settings.past_set.remove(oldest)
 
                         return chosen_anime, chosen_theme, tracks[0]
