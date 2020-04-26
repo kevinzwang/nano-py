@@ -149,7 +149,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```' + (anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '```')
+            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '}```')
         finally:
             await player.disconnect()
             if on_message:
