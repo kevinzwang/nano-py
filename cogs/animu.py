@@ -157,95 +157,98 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
     async def _get_next_up(self, settings: GameSettings):
         """Returns data for an anime, a theme, and a wavelink track"""
-        chosen_list = random.sample(settings.anime_lists, 1)[0]
-        if chosen_list == 'top200':
-            async with self.bot.http_session.post(api_url, json={
-                'query': queries['from_top'],
-                'variables': {
-                    'page': random.randint(1, 200)
-                }
-            }) as response:
-                json = await response.json()
-            
-            chosen_anime = json['data']['Page']['media'][0]
-        else:
-            async with self.bot.http_session.post(api_url, json={
-                'query': queries['from_list'],
-                'variables': {
-                    'name': chosen_list
-                }
-            }) as response:
-                json = await response.json()
-            
+        try:
+            chosen_list = random.sample(settings.anime_lists, 1)[0]
+            if chosen_list == 'top200':
+                async with self.bot.http_session.post(api_url, json={
+                    'query': queries['from_top'],
+                    'variables': {
+                        'page': random.randint(1, 200)
+                    }
+                }) as response:
+                    json = await response.json()
+                
+                chosen_anime = json['data']['Page']['media'][0]
+            else:
+                async with self.bot.http_session.post(api_url, json={
+                    'query': queries['from_list'],
+                    'variables': {
+                        'name': chosen_list
+                    }
+                }) as response:
+                    json = await response.json()
+                
             all_anime = [a['media'] for l in json['data']['MediaListCollection']['lists'] for a in l['entries']]
             chosen_anime = random.choice(all_anime)
 
-        if chosen_anime['seasonYear'] < 2000:
-            year = f'{str(chosen_anime["seasonYear"])[2]}0s'
-        else:
-            year = chosen_anime['seasonYear']
+            if chosen_anime['seasonYear'] < 2000:
+                year = f'{str(chosen_anime["seasonYear"])[2]}0s'
+            else:
+                year = chosen_anime['seasonYear']
 
-        async with self.bot.http_session.get(f'https://www.reddit.com/r/AnimeThemes/wiki/{year}.json') as response:
-            json = await response.json()
-        
+            async with self.bot.http_session.get(f'https://www.reddit.com/r/AnimeThemes/wiki/{year}.json') as response:
+                json = await response.json()
+            
 
-        soup = BeautifulSoup(html2text.html2text(json['data']['content_html']), features='html.parser')
-        anime_link = soup.find(href=f'https://myanimelist.net/anime/{chosen_anime["idMal"]}/')
-        if anime_link:
-            rows = anime_link.parent.find_next_sibling('table').find('tbody').find_all('tr')
-            themes = []
-            for r in rows:
-                children = r.find_all('td')
-                name = children[0].string
-                link = children[1].find('a', href=True)
+            soup = BeautifulSoup(html2text.html2text(json['data']['content_html']), features='html.parser')
+            anime_link = soup.find(href=f'https://myanimelist.net/anime/{chosen_anime["idMal"]}/')
+            if anime_link:
+                rows = anime_link.parent.find_next_sibling('table').find('tbody').find_all('tr')
+                themes = []
+                for r in rows:
+                    children = r.find_all('td')
+                    name = children[0].string
+                    link = children[1].find('a', href=True)
 
-                if name and link:
-                    themes.append({'name': name.strip().replace('\n', ' '), 'url': "".join(link['href'].split())})
+                    if name and link:
+                        themes.append({'name': name.strip().replace('\n', ' '), 'url': "".join(link['href'].split())})
 
-            if themes:
-                chosen_theme = random.choice(themes)
-                
-                # avoid excessive duplication
-                if not chosen_theme['url'] in settings.past_set:
-                    ## now it's time to get the wavelink track
-                    search = f'ytsearch:{chosen_anime["title"]["romaji"]}'
-                    short_name = re.search('"([^"]*)"',chosen_theme['name'])
-                    if short_name:
-                        if chosen_theme['name'].startswith('OP'):
-                            search += ' OP'
-                        elif chosen_theme['name'].startswith('ED'):
-                            search += ' ED'
+                if themes:
+                    chosen_theme = random.choice(themes)
+                    
+                    # avoid excessive duplication
+                    if not chosen_theme['url'] in settings.past_set:
+                        ## now it's time to get the wavelink track
+                        search = f'ytsearch:{chosen_anime["title"]["romaji"]}'
+                        short_name = re.search('"([^"]*)"',chosen_theme['name'])
+                        if short_name:
+                            if chosen_theme['name'].startswith('OP'):
+                                search += ' OP'
+                            elif chosen_theme['name'].startswith('ED'):
+                                search += ' ED'
 
-                        search += ' ' + short_name.groups()[0]
-                    else:
-                        search += ' ' + chosen_theme['name']
+                            search += ' ' + short_name.groups()[0]
+                        else:
+                            search += ' ' + chosen_theme['name']
 
-                    tracks = None
-                    # try youtube
-                    attempts = 1
-                    while not tracks and attempts <= 3:
-                        tracks = await self.wavelink.get_tracks(search)
-                        attempts += 1
-                            
-                    # try the given url as backup
-                    attempts = 1
-                    while not tracks and attempts <= 3:
-                        tracks = await self.wavelink.get_tracks(chosen_theme['url'])
-                        attempts += 1
+                        tracks = None
+                        # try youtube
+                        attempts = 1
+                        while not tracks and attempts <= 3:
+                            tracks = await self.wavelink.get_tracks(search)
+                            attempts += 1
+                                
+                        # try the given url as backup
+                        attempts = 1
+                        while not tracks and attempts <= 3:
+                            tracks = await self.wavelink.get_tracks(chosen_theme['url'])
+                            attempts += 1
 
-                    if tracks:
-                        # add the theme to our cache
-                        settings.past_set.add(chosen_theme['url'])
-                        await settings.past_queue.put(chosen_theme['url'])
+                        if tracks:
+                            # add the theme to our cache
+                            settings.past_set.add(chosen_theme['url'])
+                            await settings.past_queue.put(chosen_theme['url'])
 
-                        # rotate out the older ones
-                        if settings.past_queue.qsize() > 50:
-                            oldest = await settings.past_queue.get()
-                            settings.past_set.remove(oldest)
+                            # rotate out the older ones
+                            if settings.past_queue.qsize() > 50:
+                                oldest = await settings.past_queue.get()
+                                settings.past_set.remove(oldest)
 
-                        return chosen_anime, chosen_theme, tracks[0]
-        
-        return await self._get_next_up(settings) # in case there's no theme found for this 
+                            return chosen_anime, chosen_theme, tracks[0]
+            
+            return await self._get_next_up(settings) # in case there's no theme found for this 
+        except:
+            return await self._get_next_up(settings) # something done fucked up but it ain't my fault so i'm trying again
 
     async def _find_anime(self, search, id_mal):
         async with self.bot.http_session.post(api_url, json={
