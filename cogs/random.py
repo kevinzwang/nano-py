@@ -1,6 +1,5 @@
 from discord.ext import commands
 import aiohttp
-import asyncio
 import random
 
 class Random(commands.Cog):

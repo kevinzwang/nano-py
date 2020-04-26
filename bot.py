@@ -1,10 +1,8 @@
-import discord
-from discord.ext import commands
-import random
-import string 
 import aiohttp
+import discord
 import re
 import yaml
+from discord.ext import commands
 
 extensions = (
     'cogs.admin',

@@ -1,13 +1,13 @@
-import discord
-from discord.ext import commands
 import asyncio
-from typing import Set, Dict
-import random
-from bs4 import BeautifulSoup
-import yaml
-import wavelink
+import discord
 import html2text
+import random
 import re
+import wavelink
+import yaml
+from bs4 import BeautifulSoup
+from discord.ext import commands
+from typing import Set, Dict
 
 class GameSettings:
     def __init__(self):

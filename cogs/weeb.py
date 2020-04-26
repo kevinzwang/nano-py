@@ -21,70 +21,70 @@ class Weeb(commands.Cog):
                     'page': page,
                     'perPage': 5
                 }
-            }) as response:
-                json = await response.json()
-                page_json = json['data']['Page']
+            }) as response: json = await response.json()
 
-                if not page_json['media']:
-                    msg = await ctx.send(f'No {media_type} found.')
-                    return None, msg
+            page_json = json['data']['Page']
 
-                if page == 1 and len(page_json['media']) == 1:
-                    return page_json['media'][0]['id'], None
+            if not page_json['media']:
+                msg = await ctx.send(f'No {media_type} found.')
+                return None, msg
 
-                embed = discord.Embed(
-                    title=f'Search results for: \'{search}\' ({page}/{page_json["pageInfo"]["lastPage"]})',
-                    description=''.join([f'{index+1}. [{status_symbols.get(anime["status"])} {anime["title"]["romaji"]} ({self._format_mediaformat(anime["format"])})]({anime["siteUrl"]})\n' for index, anime in enumerate(page_json['media'])]),
-                    color=anilist_colors[media_type],
-                ).set_footer(text='AniList.co', icon_url=icon_url)
+            if page == 1 and len(page_json['media']) == 1:
+                return page_json['media'][0]['id'], None
 
-                if msg:
-                    await msg.edit(embed=embed)
-                else:
-                    msg = await ctx.send(embed=embed)
-                    for emoji in search_reactions:
-                        asyncio.create_task(msg.add_reaction(emoji))
+            embed = discord.Embed(
+                title=f'Search results for: \'{search}\' ({page}/{page_json["pageInfo"]["lastPage"]})',
+                description='\n'.join([f'{index+1}. [{status_symbols.get(anime["status"])} {anime["title"]["romaji"]} ({self._format_mediaformat(anime["format"])})]({anime["siteUrl"]})' for index, anime in enumerate(page_json['media'])]),
+                color=anilist_colors[media_type],
+            ).set_footer(text='AniList.co', icon_url=icon_url)
 
-                def reaction_check(reaction, user):
-                    if user == ctx.author and reaction.message.id == msg.id and reaction.emoji in search_reactions:
-                        index = search_reactions.index(reaction.emoji)
-                        if index < 5: return index+1 <= len(page_json['media'])
-                        elif reaction.emoji == '⬅️': return page > 1
-                        elif reaction.emoji == '➡️': return page < page_json["pageInfo"]["lastPage"]
-                        elif reaction.emoji == '❌': return True
-                        
-                    return False
+            if msg:
+                await msg.edit(embed=embed)
+            else:
+                msg = await ctx.send(embed=embed)
+                for emoji in search_reactions:
+                    self.bot.loop.create_task(msg.add_reaction(emoji))
 
-                try:
-                    reaction, user = await self.bot.wait_for('reaction_add', timeout=60, check=reaction_check)
-                except asyncio.TimeoutError:
-                    for emoji in search_reactions:
-                        asyncio.create_task(msg.remove_reaction(emoji, self.bot.user))
+            def reaction_check(reaction, user):
+                if user == ctx.author and reaction.message.id == msg.id and reaction.emoji in search_reactions:
+                    index = search_reactions.index(reaction.emoji)
+                    if index < 5: return index+1 <= len(page_json['media'])
+                    elif reaction.emoji == '⬅️': return page > 1
+                    elif reaction.emoji == '➡️': return page < page_json["pageInfo"]["lastPage"]
+                    elif reaction.emoji == '❌': return True
+                    
+                return False
 
-                    await msg.edit(content='Search timed out', embed=None)
+            try:
+                reaction, user = await self.bot.wait_for('reaction_add', timeout=60, check=reaction_check)
+            except asyncio.TimeoutError:
+                for emoji in search_reactions:
+                    self.bot.loop.create_task(msg.remove_reaction(emoji, self.bot.user))
 
-                    return None, msg
+                await msg.edit(content='Search timed out', embed=None)
 
-                try:
-                    await msg.remove_reaction(reaction, user)
-                except:
-                    pass
+                return None, msg
 
-                index = search_reactions.index(reaction.emoji)
-                if index < 5:
-                    for emoji in search_reactions:
-                        asyncio.create_task(msg.remove_reaction(emoji, self.bot.user))
-                    return page_json['media'][index]['id'], msg
-                elif reaction.emoji == '⬅️':
-                    page -= 1
-                elif reaction.emoji == '➡️':
-                    page += 1
-                elif reaction.emoji == '❌':
-                    for emoji in search_reactions:
-                        asyncio.create_task(msg.remove_reaction(emoji, self.bot.user))
+            try:
+                await msg.remove_reaction(reaction, user)
+            except:
+                pass
 
-                    await msg.edit(content='Search cancelled', embed=None)
-                    return None, msg
+            index = search_reactions.index(reaction.emoji)
+            if index < 5:
+                for emoji in search_reactions:
+                    self.bot.loop.create_task(msg.remove_reaction(emoji, self.bot.user))
+                return page_json['media'][index]['id'], msg
+            elif reaction.emoji == '⬅️':
+                page -= 1
+            elif reaction.emoji == '➡️':
+                page += 1
+            elif reaction.emoji == '❌':
+                for emoji in search_reactions:
+                    self.bot.loop.create_task(msg.remove_reaction(emoji, self.bot.user))
+
+                await msg.edit(content='Search cancelled', embed=None)
+                return None, msg
                 
     async def _anime_embed(self, json):
         anime = json['data']['Media']
@@ -238,11 +238,15 @@ class Weeb(commands.Cog):
                 'variables': {
                     'id': anime_id
                 }
-            }) as response:
-                if msg:
-                    await msg.edit(embed=await self._anime_embed(await response.json()))
-                else:
-                    await ctx.send(embed=await self._anime_embed(await response.json()))
+            }) as response: json = await response.json()
+
+            if msg:
+                await msg.edit(embed=await self._anime_embed(json))
+            else:
+                msg = await ctx.send(embed=await self._anime_embed(json))
+
+            if animu := self.bot.get_cog('Aniμ'):
+                await animu.play_from_anime(ctx, msg, json)
 
     @commands.command(aliases=['qa'], help='Gets you the first anime result. You can also do `((search))`')
     @commands.cooldown(3, 10, commands.BucketType.user)
@@ -252,12 +256,14 @@ class Weeb(commands.Cog):
             'variables': {
                 'search': search
             }
-        }) as response:
-            json = await response.json()
-            if json['data']['Media']:
-                await ctx.send(embed=await self._anime_embed(json))
-            else:
-                await ctx.send('No anime found.')
+        }) as response: json = await response.json()
+
+        if json['data']['Media']:
+            msg = await ctx.send(embed=await self._anime_embed(json))
+            if animu := self.bot.get_cog('Aniμ'):
+                await animu.play_from_anime(ctx, msg, json)
+        else:
+            await ctx.send('No anime found.')
 
     @commands.command(aliases=['anilist', 'al'], help='Info about an AniList user\'s anime list')
     @commands.cooldown(3, 10, commands.BucketType.user)
@@ -267,49 +273,49 @@ class Weeb(commands.Cog):
             'variables': {
                 'name': name
             }
-        }) as response:
-            json = await response.json()
-            user = json['data']['User']
+        }) as response: json = await response.json()
+            
+        user = json['data']['User']
 
-            if user:
-                statuses = {}
-                for anime_list in json['data']['MediaListCollection']['lists']:
-                    statuses[anime_list['name']] = len(anime_list['entries'])
+        if user:
+            statuses = {}
+            for anime_list in json['data']['MediaListCollection']['lists']:
+                statuses[anime_list['name']] = len(anime_list['entries'])
 
-                formatted_list = '```'
-                for list_name in ('Watching', 'Completed', 'Paused', 'Dropped', 'Planning'):
-                    list_count = statuses[list_name] if list_name in statuses else 0
-                    formatted_list += f'{list_name}:{" "*(15-len(list_name)-len(str(list_count)))}{list_count}\n'
-                formatted_list += '```'
+            formatted_list = '```'
+            for list_name in ('Watching', 'Completed', 'Paused', 'Dropped', 'Planning'):
+                list_count = statuses[list_name] if list_name in statuses else 0
+                formatted_list += f'{list_name}:{" "*(15-len(list_name)-len(str(list_count)))}{list_count}\n'
+            formatted_list += '```'
 
-                await ctx.send(embed=discord.Embed(
-                        title=user['name'],
-                        url=user['siteUrl'],
-                        color=anilist_colors[user['options']['profileColor']]
-                    ).set_footer(
-                        text='AniList.co', 
-                        icon_url=icon_url
-                    ).set_thumbnail(
-                        url=user['avatar']['large']
-                    ).add_field(
-                        name='Total Anime', 
-                        inline=True, 
-                        value=user['statistics']['anime']['count'] if user['statistics']['anime']['count'] else 0
-                    ).add_field(
-                        name='Days Watched',
-                        inline=True,
-                        value=(math.floor(user['statistics']['anime']['minutesWatched'] / (24*60) * 10) / 10) if user['statistics']['anime']['minutesWatched'] else 0
-                    ).add_field(
-                        name='Mean Score',
-                        inline=True,
-                        value=f'{round(user["statistics"]["anime"]["meanScore"], 1)}%' if user['statistics']['anime']['meanScore'] else shrug
-                    ).add_field(
-                        name='Anime List',
-                        value=formatted_list
-                    )
+            await ctx.send(embed=discord.Embed(
+                    title=user['name'],
+                    url=user['siteUrl'],
+                    color=anilist_colors[user['options']['profileColor']]
+                ).set_footer(
+                    text='AniList.co', 
+                    icon_url=icon_url
+                ).set_thumbnail(
+                    url=user['avatar']['large']
+                ).add_field(
+                    name='Total Anime', 
+                    inline=True, 
+                    value=user['statistics']['anime']['count'] if user['statistics']['anime']['count'] else 0
+                ).add_field(
+                    name='Days Watched',
+                    inline=True,
+                    value=(math.floor(user['statistics']['anime']['minutesWatched'] / (24*60) * 10) / 10) if user['statistics']['anime']['minutesWatched'] else 0
+                ).add_field(
+                    name='Mean Score',
+                    inline=True,
+                    value=f'{round(user["statistics"]["anime"]["meanScore"], 1)}%' if user['statistics']['anime']['meanScore'] else shrug
+                ).add_field(
+                    name='Anime List',
+                    value=formatted_list
                 )
-            else:
-                await ctx.send('No AniList user found')
+            )
+        else:
+            await ctx.send('No AniList user found')
 
     @commands.command(aliases=['m'], help='Info about a manga')
     @commands.cooldown(3, 10, commands.BucketType.user)
@@ -321,11 +327,12 @@ class Weeb(commands.Cog):
                 'variables': {
                     'id': manga_id
                 }
-            }) as response:
-                if msg:
-                    await msg.edit(embed=await self._manga_embed(await response.json()))
-                else:
-                    await ctx.send(embed=await self._manga_embed(await response.json()))
+            }) as response: json = await response.json()
+
+            if msg:
+                await msg.edit(embed=await self._manga_embed(json))
+            else:
+                await ctx.send(embed=await self._manga_embed(json))
 
     @commands.command(aliases=['qm'], help='Gets you the first manga result. You can also do `<<search>>`')
     async def quickmanga(self, ctx, *, search):
@@ -334,12 +341,12 @@ class Weeb(commands.Cog):
             'variables': {
                 'search': search
             }
-        }) as response:
-            json = await response.json()
-            if json['data']['Media']:
-                await ctx.send(embed=await self._manga_embed(json))
-            else:
-                await ctx.send('No manga found.')
+        }) as response: json = await response.json()
+
+        if json['data']['Media']:
+            await ctx.send(embed=await self._manga_embed(json))
+        else:
+            await ctx.send('No manga found.')
 
     @commands.command(aliases=['ml'], help='Info about an AniList user\'s manga list')
     @commands.cooldown(3, 10, commands.BucketType.user)
@@ -349,49 +356,49 @@ class Weeb(commands.Cog):
             'variables': {
                 'name': name
             }
-        }) as response:
-            json = await response.json()
-            user = json['data']['User']
+        }) as response: json = await response.json()
+        
+        user = json['data']['User']
 
-            if user:
-                statuses = {}
-                for manga_list in json['data']['MediaListCollection']['lists']:
-                    statuses[manga_list['name']] = len(manga_list['entries'])
+        if user:
+            statuses = {}
+            for manga_list in json['data']['MediaListCollection']['lists']:
+                statuses[manga_list['name']] = len(manga_list['entries'])
 
-                formatted_list = '```'
-                for list_name in ('Reading', 'Completed', 'Paused', 'Dropped', 'Planning'):
-                    list_count = statuses[list_name] if list_name in statuses else 0
-                    formatted_list += f'{list_name}:{" "*(15-len(list_name)-len(str(list_count)))}{list_count}\n'
-                formatted_list += '```'
+            formatted_list = '```'
+            for list_name in ('Reading', 'Completed', 'Paused', 'Dropped', 'Planning'):
+                list_count = statuses[list_name] if list_name in statuses else 0
+                formatted_list += f'{list_name}:{" "*(15-len(list_name)-len(str(list_count)))}{list_count}\n'
+            formatted_list += '```'
 
-                await ctx.send(embed=discord.Embed(
-                        title=user['name'],
-                        url=user['siteUrl'],
-                        color=anilist_colors[user['options']['profileColor']]
-                    ).set_footer(
-                        text='AniList.co', 
-                        icon_url=icon_url
-                    ).set_thumbnail(
-                        url=user['avatar']['large']
-                    ).add_field(
-                        name='Total Manga', 
-                        inline=True, 
-                        value=user['statistics']['manga']['count'] if user['statistics']['manga']['count'] else 0
-                    ).add_field(
-                        name='Chapters Read',
-                        inline=True,
-                        value=user['statistics']['manga']['chaptersRead'] if user['statistics']['manga']['chaptersRead'] else 0
-                    ).add_field(
-                        name='Mean Score',
-                        inline=True,
-                        value=f'{round(user["statistics"]["manga"]["meanScore"], 1)}%' if user['statistics']['manga']['meanScore'] else shrug
-                    ).add_field(
-                        name='Manga List',
-                        value=formatted_list
-                    )
+            await ctx.send(embed=discord.Embed(
+                    title=user['name'],
+                    url=user['siteUrl'],
+                    color=anilist_colors[user['options']['profileColor']]
+                ).set_footer(
+                    text='AniList.co', 
+                    icon_url=icon_url
+                ).set_thumbnail(
+                    url=user['avatar']['large']
+                ).add_field(
+                    name='Total Manga', 
+                    inline=True, 
+                    value=user['statistics']['manga']['count'] if user['statistics']['manga']['count'] else 0
+                ).add_field(
+                    name='Chapters Read',
+                    inline=True,
+                    value=user['statistics']['manga']['chaptersRead'] if user['statistics']['manga']['chaptersRead'] else 0
+                ).add_field(
+                    name='Mean Score',
+                    inline=True,
+                    value=f'{round(user["statistics"]["manga"]["meanScore"], 1)}%' if user['statistics']['manga']['meanScore'] else shrug
+                ).add_field(
+                    name='Manga List',
+                    value=formatted_list
                 )
-            else:
-                await ctx.send('No AniList user found')
+            )
+        else:
+            await ctx.send('No AniList user found')
 
 api_url = 'https://graphql.anilist.co'
 icon_url = 'https://anilist.co/favicon.ico'
