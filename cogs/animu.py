@@ -111,7 +111,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             color=colors['success']
                         ).add_field(
                             name='Scores',
-                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
                         ).set_author(
                             name=(winner.nick if winner.nick else winner.name) + ' got the right answer!', 
                             icon_url=winner.avatar_url
@@ -125,7 +125,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             color=colors['failure']
                         ).add_field(
                             name='Scores',
-                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
                         ).set_author(
                             name='Nobody got this round :(', 
                         ).set_thumbnail(
