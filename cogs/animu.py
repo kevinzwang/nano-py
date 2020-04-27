@@ -178,8 +178,8 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 }) as response:
                     json = await response.json()
                 
-            all_anime = [a['media'] for l in json['data']['MediaListCollection']['lists'] for a in l['entries']]
-            chosen_anime = random.choice(all_anime)
+                all_anime = [a['media'] for l in json['data']['MediaListCollection']['lists'] for a in l['entries']]
+                chosen_anime = random.choice(all_anime)
 
             if chosen_anime['seasonYear'] < 2000:
                 year = f'{str(chosen_anime["seasonYear"])[2]}0s'
@@ -247,7 +247,9 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             return chosen_anime, chosen_theme, tracks[0]
             
             return await self._get_next_up(settings) # in case there's no theme found for this 
-        except:
+        except Exception as e:
+            print(type(e))
+            print(e)
             return await self._get_next_up(settings) # something done fucked up but it ain't my fault so i'm trying again
 
     async def _find_anime(self, search, id_mal):
