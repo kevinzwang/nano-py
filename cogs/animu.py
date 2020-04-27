@@ -78,6 +78,8 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         
         on_message = None
 
+        format_scores = lambda: '\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
+
         try:
             while True:
                 await asyncio.sleep(5)
@@ -102,38 +104,33 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 
                 next_up = self.bot.loop.create_task(self._get_next_up(settings))
 
+                embed = discord.Embed(
+                    title=f'AniMu - Round {round_number} results',
+                    description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__',
+                ).set_thumbnail(
+                    url=anime['coverImage']['extraLarge']
+                )
+
                 try:
-                    winner = await asyncio.wait_for(future, timeout=30)
-                    await text_channel.send(
-                        embed=discord.Embed(
-                            title=f'AniMu - Round {round_number} results',
-                            description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__!',
-                            color=colors['success']
-                        ).add_field(
-                            name='Scores',
-                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
-                        ).set_author(
-                            name=(winner.nick if winner.nick else winner.name) + ' got the right answer!', 
-                            icon_url=winner.avatar_url
-                        )
+                    winner = await asyncio.wait_for(future, timeout=45)
+                    embed.color = colors['success']
+                    embed.set_author(
+                        name=(winner.nick if winner.nick else winner.name) + ' got the right answer!', 
+                        icon_url=winner.avatar_url
                     )
                 except asyncio.TimeoutError:
-                    await text_channel.send(
-                        embed=discord.Embed(
-                            title=f'AniMu - Round {round_number} results',
-                            description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__!',
-                            color=colors['failure']
-                        ).add_field(
-                            name='Scores',
-                            value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
-                        ).set_author(
-                            name='Nobody got this round :(', 
-                        ).set_thumbnail(
-                            url=anime['coverImage']['extraLarge']
-                        )
+                    embed.color = colors['failure']
+                    embed.set_author(
+                        name='Nobody got this round :(', 
                     )
-
+                
                 self.bot.remove_listener(on_message)
+
+                embed.add_field(
+                    name='Scores',
+                    value=format_scores()
+                )
+                await text_channel.send(embed=embed)
 
                 round_number += 1
 
@@ -144,7 +141,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                     color=colors['info']
                 ).add_field(
                     name='Final Scores',
-                    value='\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1])]) if scores else 'None'
+                    value=format_scores()
                 )
             )
         except Exception as e:
@@ -153,7 +150,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         finally:
             await player.disconnect()
             if on_message:
-                await self.bot.remove_listener(on_message)
+                self.bot.remove_listener(on_message)
 
     async def _get_next_up(self, settings: GameSettings):
         """Returns data for an anime, a theme, and a wavelink track"""
@@ -189,7 +186,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             async with self.bot.http_session.get(f'https://www.reddit.com/r/AnimeThemes/wiki/{year}.json') as response:
                 json = await response.json()
             
-
+            # this is where we do our html parsing of r/AnimeThemes wiki
             soup = BeautifulSoup(html2text.html2text(json['data']['content_html']), features='html.parser')
             anime_link = soup.find(href=f'https://myanimelist.net/anime/{chosen_anime["idMal"]}/')
             if anime_link:
@@ -202,42 +199,45 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
                     if name and link:
                         themes.append({'name': name.strip().replace('\n', ' '), 'url': "".join(link['href'].split())})
+                    elif name:
+                        themes.append({'name': name.strip().replace('\n', ' ')})
 
                 if themes:
                     chosen_theme = random.choice(themes)
                     
+                    ## now it's time to get the wavelink track
+                    search = chosen_anime['title']['romaji']
+                    short_name = re.search('"([^"]*)"',chosen_theme['name'])
+                    if short_name:
+                        if chosen_theme['name'].startswith('OP'):
+                            search += ' OP'
+                        elif chosen_theme['name'].startswith('ED'):
+                            search += ' ED'
+
+                        search += ' ' + short_name.groups()[0]
+                    else:
+                        search += ' ' + chosen_theme['name']
+
                     # avoid excessive duplication
-                    if not chosen_theme['url'] in settings.past_set:
-                        ## now it's time to get the wavelink track
-                        search = f'ytsearch:{chosen_anime["title"]["romaji"]}'
-                        short_name = re.search('"([^"]*)"',chosen_theme['name'])
-                        if short_name:
-                            if chosen_theme['name'].startswith('OP'):
-                                search += ' OP'
-                            elif chosen_theme['name'].startswith('ED'):
-                                search += ' ED'
-
-                            search += ' ' + short_name.groups()[0]
-                        else:
-                            search += ' ' + chosen_theme['name']
-
+                    if not search in settings.past_set:
                         tracks = None
                         # try youtube
                         attempts = 1
                         while not tracks and attempts <= 3:
-                            tracks = await self.wavelink.get_tracks(search)
+                            tracks = await self.wavelink.get_tracks('ytsearch:' + search)
                             attempts += 1
                                 
                         # try the given url as backup
-                        attempts = 1
-                        while not tracks and attempts <= 3:
-                            tracks = await self.wavelink.get_tracks(chosen_theme['url'])
-                            attempts += 1
+                        if not tracks and chosen_theme['url']:
+                            attempts = 1
+                            while not tracks and attempts <= 3:
+                                tracks = await self.wavelink.get_tracks(chosen_theme['url'])
+                                attempts += 1
 
                         if tracks:
                             # add the theme to our cache
-                            settings.past_set.add(chosen_theme['url'])
-                            await settings.past_queue.put(chosen_theme['url'])
+                            settings.past_set.add(search)
+                            await settings.past_queue.put(search)
 
                             # rotate out the older ones
                             if settings.past_queue.qsize() > 50:
@@ -249,7 +249,6 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             return await self._get_next_up(settings) # in case there's no theme found for this 
         except Exception as e:
             print(type(e))
-            print(e)
             return await self._get_next_up(settings) # something done fucked up but it ain't my fault so i'm trying again
 
     async def _find_anime(self, search, id_mal):
@@ -270,6 +269,12 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 return True
 
         return False
+    
+    def _get_and_add_settings(self, guild_id):
+        if guild_id not in self.settings:
+            self.settings[guild_id] = GameSettings()
+
+        return self.settings[guild_id]
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
@@ -297,12 +302,9 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         if not ctx.author.voice:
             return await ctx.send('Please join a voice channel first before starting the game.')
 
-        if ctx.guild.id not in self.settings:
-            self.settings[ctx.guild.id] = GameSettings()
+        self.games[ctx.guild.id] = GameState(ctx.author.voice.channel, self.bot.loop.create_task(self._game_loop(ctx.author.voice.channel, ctx.channel, settings = self._get_and_add_settings(ctx.guild.id))))
 
-        self.games[ctx.guild.id] = GameState(ctx.author.voice.channel, self.bot.loop.create_task(self._game_loop(ctx.author.voice.channel, ctx.channel, self.settings[ctx.guild.id])))
-
-    @animu.command(aliases=['exit', 'quit', 'end'], help='Stops the current AniMu game')
+    @animu.command(aliases=['exit', 'quit', 'end'], help='Stops the current AniMu game.\nThis command will automatically be called when there are no more players in the voice channel.')
     async def stop(self, ctx):
         game = self.games.get(ctx.guild.id)
         if not game or game.loop.done():
@@ -313,13 +315,11 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
         game.loop.cancel()
 
-    @animu.command(aliases=['add', 'al'], help='Adds one or moreAniList users\' anime list to the game.')
+    @animu.command(aliases=['add', 'al'], help='Adds one or moreAniList user\'s anime list to the game.')
     async def addlist(self, ctx, *names):
-        if ctx.guild.id not in self.settings:
-            self.settings[ctx.guild.id] = GameSettings()
+        settings = self._get_and_add_settings(ctx.guild.id)
 
-        settings = self.settings[ctx.guild.id]
-
+        unknown_list = False
         for n in names:
             if n == 'top200':
                 settings.anime_lists.add(n)
@@ -333,31 +333,45 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                     if response.status == 200:
                         settings.anime_lists.add(n)
                     else:
-                        await ctx.send(f'No AniList user found by the name of {n}.')
+                        unknown_list = True
 
-        return await ctx.send(f'Lists added!\nAnime lists in this game: {", ".join(settings.anime_lists)}')
+        return await ctx.send(
+            embed=discord.Embed(
+                title='AniMu - Add Anime Lists',
+                description='One or more of the requested users could not be found.' if unknown_list else 'Lists successfully added!',
+                color=colors['failure'] if unknown_list else colors['info'],
+            ).add_field(
+                name='Anime Lists',
+                value='\n'.join(settings.anime_lists)
+            )
+        )
 
-    @animu.command(aliases=['remove', 'rm', 'rl'], help='Remove an AniList user\'s anime list to the game.')
-    async def removelist(self, ctx, name: str):
-        if ctx.guild.id not in self.settings:
-            self.settings[ctx.guild.id] = GameSettings()
+    @animu.command(aliases=['remove', 'rm', 'rl'], help='Remove one or more AniList user\'s anime list from the game.')
+    async def removelist(self, ctx, *names):
+        settings = self._get_and_add_settings(ctx.guild.id)
+        
+        for n in names:
+           settings.anime_lists.discard(n)
 
-        settings = self.settings[ctx.guild.id]
-
-        if name in settings.anime_lists:
-            settings.anime_lists.remove(name)
-            return await ctx.send(f'List removed!\nAnime lists in this game: {", ".join(settings.anime_lists)}')
-        else:
-            return await ctx.send(f'List wasn\'t added to game.\nAnime lists in this game: {", ".join(settings.anime_lists)}')
+        return await ctx.send(
+            embed=discord.Embed(
+                title='AniMu - Remove Anime Lists',
+                description='Lists successfully removed!',
+                color=colors['info'],
+            ).add_field(
+                name='Anime Lists',
+                value='\n'.join(settings.anime_lists)
+            )
+        )
 
     @animu.command(aliases=['list', 'l'], help='Shows what anime lists are in the game set')
     async def lists(self, ctx):
-        if ctx.guild.id not in self.settings:
-            self.settings[ctx.guild.id] = GameSettings()
-
-        settings = self.settings[ctx.guild.id]
-
-        return await ctx.send(f'Anime lists in this game: {", ".join(settings.anime_lists)}')
+        settings = self._get_and_add_settings(ctx.guild.id)
+        return await ctx.send(embed=discord.Embed(
+            title='AniMu - Anime Lists',
+            description='\n'.join(settings.anime_lists),
+            color=colors['info']
+        ))
 
     @commands.command(hidden=True)
     @commands.guild_only()
@@ -389,7 +403,7 @@ rules = discord.Embed(
     color=colors['info'],
     description=
 '''
-The game is simple: the bot plays a random anime theme, and players have 30 seconds to guess what it is. To guess, put a question mark at the end of your message, ex: `sao?`.
+The game is simple: the bot plays a random anime theme, and players have 45 seconds to guess what it is. To guess, put a question mark at the end of your message, ex: `sao?`.
 
 You get 10 points for a correct guess and lose 5 points for an incorrect guess. You can guess as many times as you want, but keep an eye on those points!
 
