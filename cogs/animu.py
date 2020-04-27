@@ -315,7 +315,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
         game.loop.cancel()
 
-    @animu.command(aliases=['add', 'al'], help='Adds one or moreAniList user\'s anime list to the game.')
+    @animu.command(aliases=['add', 'al'], help='Adds one or more AniList user\'s anime list to the game.')
     async def addlist(self, ctx, *names):
         settings = self._get_and_add_settings(ctx.guild.id)
 

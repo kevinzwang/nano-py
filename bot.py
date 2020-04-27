@@ -29,11 +29,11 @@ class Nano(commands.Bot):
 
     async def on_ready(self):
         self.command_prefix = (f'<@!{self.user.id}> ', f'<@{self.user.id}> ')
-        await self.change_presence(activity=discord.Game('type `help!`'))
+        await self.change_presence(activity=discord.Game('type "help!"'))
 
         self.http_session = aiohttp.ClientSession()
 
-        print('Nano is connected!')
+        print(f'{self.user} is connected!')
 
     async def close(self):
         await super().close()

@@ -248,7 +248,7 @@ class Weeb(commands.Cog):
             if animu := self.bot.get_cog('Aniμ'):
                 await animu.play_from_anime(ctx, msg, json)
 
-    @commands.command(aliases=['qa'], help='Gets you the first anime result. You can also do `((search))`')
+    @commands.command(aliases=['qa'], help='Gets you the first anime result.\nYou can also do "((search))"')
     @commands.cooldown(3, 10, commands.BucketType.user)
     async def quickanime(self, ctx, *, search):
         async with self.bot.http_session.post(api_url, json={
@@ -334,7 +334,7 @@ class Weeb(commands.Cog):
             else:
                 await ctx.send(embed=await self._manga_embed(json))
 
-    @commands.command(aliases=['qm'], help='Gets you the first manga result. You can also do `<<search>>`')
+    @commands.command(aliases=['qm'], help='Gets you the first manga result.\nYou can also do "<<search>>"')
     async def quickmanga(self, ctx, *, search):
         async with self.bot.http_session.post(api_url, json={
             'query': queries['quick_manga'],
