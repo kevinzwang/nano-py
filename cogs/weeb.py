@@ -88,8 +88,14 @@ class Weeb(commands.Cog):
                 
     async def _anime_embed(self, json):
         anime = json['data']['Media']
+
+        title = anime['title']['romaji']
+        # cuz frickin kakushigoto decided they wanted to add a (TV) in their title already
+        if not title.endswith(fmt := f'({self._format_mediaformat(anime["format"])})'): 
+            title += ' ' + fmt
+
         embed = discord.Embed(
-            title=f'{anime["title"]["romaji"]} ({self._format_mediaformat(anime["format"])})',
+            title=title,
             description=self._format_description(anime['description']),
             url=anime['siteUrl'],
             color=anilist_colors['anime']
@@ -122,20 +128,20 @@ class Weeb(commands.Cog):
                 name='Status', 
                 inline=True, 
                 value=self._format_mediaformat(anime['status'])
-                )
+            )
 
         if anime['episodes'] or anime['duration']:
-            if anime['episodes'] == 1 and anime['duration']:
-                embed.add_field(
-                    name='Duration', 
-                    inline=True, 
-                    value=self._format_time(anime['duration'])
-                )
-            elif anime['episodes'] > 1:
+            if anime['episodes'] and anime['episodes'] > 1:
                 embed.add_field(
                     name='Episodes', 
                     inline=True, 
                     value=anime['episodes']
+                )
+            elif anime['duration']:
+                embed.add_field(
+                    name='Duration', 
+                    inline=True, 
+                    value=self._format_time(anime['duration'])
                 )
         
         embed.add_field(
