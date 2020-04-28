@@ -86,7 +86,6 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 
                 anime, theme, track = await next_up
 
-                await player.play(track)
                 future = self.bot.loop.create_future()
                 async def on_message(msg):
                     if msg.channel == text_channel and msg.content.endswith('?') and msg.author.voice and msg.author.voice.channel.id == voice_channel.id:
@@ -101,6 +100,8 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             scores[msg.author] -= 5
                             await msg.add_reaction('❌')
                 self.bot.add_listener(on_message)
+
+                await player.play(track)
                 
                 next_up = self.bot.loop.create_task(self._get_next_up(settings))
 
@@ -302,6 +303,10 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         if not ctx.author.voice:
             return await ctx.send('Please join a voice channel first before starting the game.')
 
+        settings = self._get_and_add_settings(ctx.guild.id)
+        if not settings.anime_lists:
+            return await ctx.send('No anime lists! Please add some anime lists with `am! addlist` first before starting the game.')
+
         self.games[ctx.guild.id] = GameState(ctx.author.voice.channel, self.bot.loop.create_task(self._game_loop(ctx.author.voice.channel, ctx.channel, settings = self._get_and_add_settings(ctx.guild.id))))
 
     @animu.command(aliases=['exit', 'quit', 'end'], help='Stops the current AniMu game.\nThis command will automatically be called when there are no more players in the voice channel.')
@@ -360,7 +365,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 color=colors['info'],
             ).add_field(
                 name='Anime Lists',
-                value='\n'.join(settings.anime_lists)
+                value='\n'.join(settings.anime_lists) if settings.anime_lists else 'No anime lists! Add some!'
             )
         )
 
