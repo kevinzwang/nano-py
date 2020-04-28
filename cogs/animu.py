@@ -88,11 +88,11 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
 
                 future = self.bot.loop.create_future()
                 async def on_message(msg):
-                    if msg.channel == text_channel and msg.content.endswith('?') and msg.author.voice and msg.author.voice.channel.id == voice_channel.id:
+                    if msg.channel == text_channel and msg.content.endswith('??') and msg.author.voice and msg.author.voice.channel.id == voice_channel.id:
                         if msg.author not in scores:
                                 scores[msg.author] = 0
 
-                        if await self._find_anime(msg.content[:-1], anime['idMal']):
+                        if await self._find_anime(msg.content[:-2], anime['idMal']):
                             await msg.add_reaction('✅')
                             scores[msg.author] += 10
                             future.set_result(msg.author)
@@ -408,7 +408,7 @@ rules = discord.Embed(
     color=colors['info'],
     description=
 '''
-The game is simple: the bot plays a random anime theme, and players have 45 seconds to guess what it is. To guess, put a question mark at the end of your message, ex: `sao?`.
+The game is simple: the bot plays a random anime theme, and players have 45 seconds to guess what it is. To guess, put two question marks at the end of your message, ex: `sao??`.
 
 You get 10 points for a correct guess and lose 5 points for an incorrect guess. You can guess as many times as you want, but keep an eye on those points!
 
