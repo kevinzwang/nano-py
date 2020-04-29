@@ -1,6 +1,7 @@
 import asyncio
 import discord
 import html2text
+import math
 import random
 import re
 import wavelink
@@ -12,14 +13,16 @@ from typing import Set, Dict
 class GameSettings:
     def __init__(self):
         self.anime_lists: Set[str] = {'top200'}
-        self.past_queue = asyncio.Queue()
+        self.past_queue = asyncio.Queue() # to store the past songs so it doesn't repeat
         self.past_set: Set[str] = set()
+        # dynamically change limit of how many round before a repeat can happen
+        # the formula is half of the size of the largest with a cap at 100
+        self.repeat_limit = 100 
 
 class GameState:
     def __init__(self, channel: discord.VoiceChannel, loop: asyncio.Task):
         self.channel = channel
         self.loop = loop
-
 
 class AniMu(commands.Cog, name='AniMu (Anime Music)'):
     def __init__(self, bot):
@@ -105,11 +108,10 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 
                 next_up = self.bot.loop.create_task(self._get_next_up(settings))
 
+                anime_info = self.bot.loop.create_task(self._get_anime_info(anime['idMal']))
+
                 embed = discord.Embed(
                     title=f'AniMu - Round {round_number} results',
-                    description=f'The song was [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__',
-                ).set_thumbnail(
-                    url=anime['coverImage']['extraLarge']
                 )
 
                 try:
@@ -127,10 +129,14 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 
                 self.bot.remove_listener(on_message)
 
-                embed.add_field(
+                title, image = await anime_info
+
+                embed.set_thumbnail(
+                    url=image
+                ).add_field(
                     name='Scores',
                     value=format_scores()
-                )
+                ).description = f'The song was [**{theme["name"]}**]({track.uri}) from __{title}__'
                 await text_channel.send(embed=embed)
 
                 round_number += 1
@@ -147,11 +153,22 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '}```')
+            await text_channel.send('```{' + ', '.join(anime['idMal'], theme['name'], theme.get('url')) + '}```')
         finally:
             await player.disconnect()
             if on_message:
                 self.bot.remove_listener(on_message)
+
+    async def _get_anime_info(self, id_mal: int):
+        async with self.bot.http_session.post(api_url, json={
+            'query': queries['anime_info'],
+            'variables': {
+                'idMal': id_mal
+            }
+        }) as response:
+            json = await response.json()
+
+        return json['data']['Media']['title']['romaji'], json['data']['Media']['coverImage']['extraLarge']
 
     async def _get_next_up(self, settings: GameSettings):
         """Returns data for an anime, a theme, and a wavelink track"""
@@ -241,7 +258,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                             await settings.past_queue.put(search)
 
                             # rotate out the older ones
-                            if settings.past_queue.qsize() > 50:
+                            while settings.past_queue.qsize() > settings.repeat_limit:
                                 oldest = await settings.past_queue.get()
                                 settings.past_set.remove(oldest)
 
@@ -276,6 +293,19 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             self.settings[guild_id] = GameSettings()
 
         return self.settings[guild_id]
+
+    async def _get_list_limit(self, list: str):
+        """Gets the repeat limit of a setting if the list passed in was the largest list. Half of the size of the completed and current lists"""
+        async with self.bot.http_session.post(api_url, json={
+            'query': queries['from_list'],
+            'variables': {
+                'name': list
+            }
+        }) as response:
+            json = await response.json()
+
+        list_size = sum([len(l['entries']) for l in json['data']['MediaListCollection']['lists']])
+        return math.floor(list_size / 2)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
@@ -328,6 +358,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         for n in names:
             if n == 'top200':
                 settings.anime_lists.add(n)
+                settings.repeat_limit = 100
             else:
                 async with self.bot.http_session.post(api_url, json={
                     'query': queries['check_user'],
@@ -337,6 +368,11 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 }) as response:
                     if response.status == 200:
                         settings.anime_lists.add(n)
+
+                        if settings.repeat_limit != 100: # if the repeat limit isn't at its limit then we might need to increase it
+                            limit = await self._get_list_limit(n)
+                            if settings.repeat_limit < limit:
+                                settings.repeat_limit = limit if limit < 100 else 100
                     else:
                         unknown_list = True
 
@@ -347,7 +383,12 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 color=colors['failure'] if unknown_list else colors['info'],
             ).add_field(
                 name='Anime Lists',
-                value='\n'.join(settings.anime_lists)
+                value='\n'.join(settings.anime_lists),
+                inline=False
+            ).add_field(
+                name='Min rounds btw repeats',
+                value=settings.repeat_limit,
+                inline=False
             )
         )
 
@@ -355,8 +396,23 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
     async def removelist(self, ctx, *names):
         settings = self._get_and_add_settings(ctx.guild.id)
         
+        update_repeat_limit = False
         for n in names:
-           settings.anime_lists.discard(n)
+            if n in settings.anime_lists:
+                settings.anime_lists.remove(n)
+
+                if n == 'top200':
+                    update_repeat_limit = True
+                else:
+                    limit = await self._get_list_limit(n)
+                    if limit >= settings.repeat_limit:
+                        update_repeat_limit = True
+
+        if update_repeat_limit and 'top200' not in settings.anime_lists:
+            settings.repeat_limit = 0 
+            for l in settings.anime_lists:
+                if (limit := await self._get_list_limit(l)) > settings.repeat_limit:
+                    settings.repeat_limit = limit
 
         return await ctx.send(
             embed=discord.Embed(
@@ -365,18 +421,28 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                 color=colors['info'],
             ).add_field(
                 name='Anime Lists',
-                value='\n'.join(settings.anime_lists) if settings.anime_lists else 'No anime lists! Add some!'
+                value='\n'.join(settings.anime_lists) if settings.anime_lists else 'No anime lists! Add some!',
+                inline=False
+            ).add_field(
+                name='Min rounds btw repeats',
+                value=settings.repeat_limit,
+                inline=False
             )
         )
 
     @animu.command(aliases=['list', 'l'], help='Shows what anime lists are in the game set')
     async def lists(self, ctx):
         settings = self._get_and_add_settings(ctx.guild.id)
-        return await ctx.send(embed=discord.Embed(
-            title='AniMu - Anime Lists',
-            description='\n'.join(settings.anime_lists),
-            color=colors['info']
-        ))
+        return await ctx.send(
+            embed=discord.Embed(
+                title='AniMu - Anime Lists',
+                description='\n'.join(settings.anime_lists),
+                color=colors['info']
+            ).add_field(
+                name='Min rounds btw repeats',
+                value=settings.repeat_limit
+            )
+        )
 
     @commands.command(hidden=True)
     @commands.guild_only()
@@ -446,12 +512,6 @@ query RandomAnimeFromList($name: String) {
         media {
           idMal
           seasonYear
-          title {
-            romaji
-          }
-          coverImage {
-            extraLarge
-          }
         }
       }
     }
@@ -465,12 +525,19 @@ query RandomAnimeFromTop($page: Int) {
     media(type: ANIME, sort: [POPULARITY_DESC]) {
       idMal
       seasonYear
-      title {
-        romaji
-      }
-      coverImage {
-        extraLarge
-      }
+    }
+  }
+}
+''',
+    'anime_info':
+'''
+query AnimeInfo($idMal: Int) {
+  Media(type: ANIME, idMal: $idMal) {
+    title {
+      romaji
+    }
+    coverImage {
+      extraLarge
     }
   }
 }
