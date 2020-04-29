@@ -377,6 +377,9 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
     async def removelist(self, ctx, *names):
         settings = self._get_and_add_settings(ctx.guild.id)
         
+        if (game := self.games.get(ctx.guild.id)) and set(names).issuperset(settings.anime_lists):
+            return await ctx.send('You can\'t remove all this lists while a game is active!')
+
         update_limit = False
         for n in names:
             if n in settings.anime_lists:
