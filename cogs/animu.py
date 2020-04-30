@@ -4,6 +4,7 @@ import html2text
 import math
 import random
 import re
+import time
 import wavelink
 import yaml
 from bs4 import BeautifulSoup
@@ -18,9 +19,11 @@ class GameSettings:
         self.repeat_limit = 100
 
 class GameState:
-    def __init__(self, channel: discord.VoiceChannel, loop: asyncio.Task):
+    def __init__(self, channel: discord.VoiceChannel, game: bool):
         self.channel = channel
-        self.loop = loop
+        self.game = game # true for game, false for listen
+        self.loop: asyncio.Task = None
+        self.track_end: asyncio.Future = None
 
 class AniMu(commands.Cog, name='AniMu (Anime Music)'):
     def __init__(self, bot):
@@ -43,7 +46,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         """Starts the connection to the Lavalink server"""
         await self.bot.wait_until_ready()
 
-        await self.wavelink.initiate_node(
+        node = await self.wavelink.initiate_node(
             host=self.config['server']['address'],
             port=self.config['server']['port'],
             rest_uri=f'http://{self.config["server"]["address"]}:{self.config["server"]["port"]}',
@@ -52,16 +55,27 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             region='us_central'
         )
 
+        node.set_hook(self._track_finished_hook)
+
     def cog_unload(self):
         """Disconnects all the music on unload"""
         if hasattr(self, 'wavelink'):
             self.bot.loop.create_task(self.wavelink.session.close())
+            for g in self.games.values():
+                g.loop.cancel()
 
     def cog_check(self, ctx):
         """Makes sure that the Lavalink connection is established for running music commands"""
         return hasattr(self, 'wavelink')
 
-    async def _game_loop(self, voice_channel: discord.VoiceChannel, text_channel: discord.TextChannel, settings: GameSettings):
+    def _track_finished_hook(self, event: wavelink.WavelinkEvent):
+        if isinstance(event, wavelink.TrackEnd):
+            if event.player.channel_id and \
+                (game := self.games.get(self.bot.get_channel(int(event.player.channel_id)).guild.id)) and \
+                game.track_end and not game.track_end.done():
+                game.track_end.set_result(None)
+
+    async def _game_loop(self, voice_channel: discord.VoiceChannel, text_channel: discord.TextChannel, settings: GameSettings, game: GameState):
         """The main game loop, runs a game."""
         next_up = self.bot.loop.create_task(self._get_next_up(settings))
         round_number = 1
@@ -78,13 +92,14 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         ))
         
         on_message = None
+        on_reaction_remove = None
 
         format_scores = lambda: '\n'.join([f'{player.mention}: {score}' for player, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)]) if scores else 'None'
 
+        await asyncio.sleep(5)
+
         try:
             while True:
-                await asyncio.sleep(5)
-                
                 anime, theme, track = await next_up
 
                 future = self.bot.loop.create_future()
@@ -132,14 +147,39 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                     name='Scores',
                     value=format_scores()
                 )
-                await text_channel.send(embed=embed)
+                results = await text_channel.send(embed=embed)
+                
+                ## following part is to continue playing the song if requested
+                await results.add_reaction('▶️')
+                try:
+                    reaction_check = lambda r, u: r.message.id == results.id and r.emoji == '▶️' and not u.bot and u.voice and u.voice.channel == voice_channel
+                    await self.bot.wait_for('reaction_add', timeout=5, check=reaction_check)
+
+                    game.track_end = self.bot.loop.create_future()
+
+                    async def on_reaction_remove(reaction, user):
+                        if reaction_check(reaction, user) and reaction.count == 1 and not game.track_end.done():
+                            game.track_end.set_result(None)
+
+                    self.bot.add_listener(on_reaction_remove)
+                    
+                    await game.track_end
+
+                    self.bot.remove_listener(on_reaction_remove)
+                except asyncio.TimeoutError:
+                    pass
+                
+                try:
+                    await message.clear_reaction('▶️')
+                except discord.Forbidden:
+                    await results.remove_reaction('▶️', self.bot.user)
 
                 round_number += 1
 
         except asyncio.CancelledError:
             await text_channel.send(
                 embed=discord.Embed(
-                    title=f'AniMu - Ending game',
+                    title='AniMu - Ending game',
                     color=colors['info']
                 ).add_field(
                     name='Final Scores',
@@ -148,11 +188,76 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name'], theme['url']) + '}```')
+            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name']) + '}```')
         finally:
             await player.disconnect()
             if on_message:
                 self.bot.remove_listener(on_message)
+            if on_reaction_remove:
+                self.bot.remove_listener(on_reaction_remove)
+
+    async def _listen_loop(self, voice_channel: discord.VoiceChannel, text_channel: discord.TextChannel, settings: GameSettings, game: GameState):
+        """Main loop for running the listen command"""
+        next_up = self.bot.loop.create_task(self._get_next_up(settings))
+        
+        player = self.wavelink.get_player(text_channel.guild.id)
+        await player.connect(voice_channel.id)
+
+        start_time = time.time()
+
+        on_reaction_add = None
+
+        try:
+            while True:
+                anime, theme, track = await next_up
+
+                await player.play(track)
+
+                next_up = self.bot.loop.create_task(self._get_next_up(settings))
+                
+                message = await text_channel.send(
+                    embed=discord.Embed(
+                        title='AniMu - Listen',
+                        color=colors['info'],
+                        description=f' You are listening to [**{theme["name"]}**]({track.uri}) from __{anime["title"]["romaji"]}__'
+                    ).set_thumbnail(
+                        url=anime['coverImage']['extraLarge']
+                    )
+                )
+                await message.add_reaction('⏭️')
+
+                game.track_end = self.bot.loop.create_future()
+
+                async def on_reaction_add(reaction, user):
+                    if reaction.message.id == message.id and reaction.emoji == '⏭️' and not user.bot and user.voice and user.voice.channel == voice_channel and not game.track_end.done():
+                        game.track_end.set_result(None)
+
+                self.bot.add_listener(on_reaction_add)
+
+                await game.track_end
+
+                self.bot.remove_listener(on_reaction_add)
+
+                try:
+                    await message.clear_reaction('⏭️')
+                except discord.Forbidden:
+                    await message.remove_reaction('⏭️', self.bot.user)
+
+        except asyncio.CancelledError:
+            await text_channel.send(
+                embed=discord.Embed(
+                    title='AniMu - Stopping Music',
+                    color=colors['info'],
+                    description=f'You listened for {round((time.time() - start_time) / 60)} minutes.'
+                )
+            )
+        except Exception as e:
+            await text_channel.send(e)
+            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name']) + '}```')
+        finally:
+            await player.disconnect()
+            if on_reaction_add:
+                self.bot.remove_listener(on_reaction_add)
 
     async def _get_next_up(self, settings: GameSettings):
         """Returns data for an anime, a theme, and a wavelink track"""
@@ -320,7 +425,27 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
         if not settings.anime_lists:
             return await ctx.send('No anime lists! Please add some anime lists with `am! addlist` first before starting the game.')
 
-        self.games[ctx.guild.id] = GameState(ctx.author.voice.channel, self.bot.loop.create_task(self._game_loop(ctx.author.voice.channel, ctx.channel, settings = self._get_and_add_settings(ctx.guild.id))))
+        game = GameState(ctx.author.voice.channel, True)
+        loop = self.bot.loop.create_task(self._game_loop(ctx.author.voice.channel, ctx.channel, settings, game))
+        game.loop = loop
+        self.games[ctx.guild.id] = game
+
+    @animu.command(help='Just peacefully listen to anime music, with no guessing.')
+    async def listen(self, ctx):
+        if (game := self.games.get(ctx.guild.id)) and not game.loop.done():
+            return await ctx.send('There is already a game running on this server!')
+
+        if not ctx.author.voice:
+            return await ctx.send('Please join a voice channel first before starting.')
+
+        settings = self._get_and_add_settings(ctx.guild.id)
+        if not settings.anime_lists:
+            return await ctx.send('No anime lists! Please add some anime lists with `am! addlist` first before starting.')
+
+        game = GameState(ctx.author.voice.channel, False)
+        loop = self.bot.loop.create_task(self._listen_loop(ctx.author.voice.channel, ctx.channel, settings, game))
+        game.loop = loop
+        self.games[ctx.guild.id] = game
 
     @animu.command(aliases=['exit', 'quit', 'end'], help='Stops the current AniMu game.\nThis command will automatically be called when there are no more players in the voice channel.')
     async def stop(self, ctx):
@@ -429,6 +554,20 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         )
 
+    @animu.command(aliases=['s'], help='Skip a song in listen mode')
+    async def skip(self, ctx):
+        game = self.games.get(ctx.guild.id)
+        if not game or game.loop.done():
+            return await ctx.send('There\'s no song to skip!')
+        
+        if game.game:
+            return await ctx.send('Haha you can only skip in listen mode')
+
+        if not ctx.author.voice or game.channel != ctx.author.voice.channel:
+            return await ctx.send('You need to be in the listening voice channel to skip!')
+
+        game.track_end.set_result(None)
+
     @commands.command(hidden=True)
     @commands.guild_only()
     @commands.is_owner()
@@ -466,6 +605,8 @@ You get 10 points for a correct guess and lose 5 points for an incorrect guess. 
 Additionally, you can add and remove users (from AniList) to pull anime from in the game with the `am! addlist` and `am! removelist` commands. The bot will get music from anime in the watching and completed lists of those users. There is also the special `top200` "user" which will get music from the top 200 most popular anime.
 
 To start a game, type `am! start` while in a voice channel. You can end the game with `am! stop`. Have fun!
+
+You can also just listen to songs from lists with `am! listen`. You can also listen longer to a song in a game by reacting with the play button. Remove your reaction to continue to the next theme.
 '''
 ).set_footer(text='Thank you Anilist and r/AnimeThemes for the data.')
 
