@@ -170,7 +170,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
                     pass
                 
                 try:
-                    await message.clear_reaction('▶️')
+                    await results.clear_reaction('▶️')
                 except discord.Forbidden:
                     await results.remove_reaction('▶️', self.bot.user)
 
