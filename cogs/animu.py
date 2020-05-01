@@ -188,7 +188,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name']) + '}```')
+            await text_channel.send('```{' + ', '.join((anime['title']['romaji'], anime['idMal'], theme['name'])) + '}```')
         finally:
             await player.disconnect()
             if on_message:
@@ -253,7 +253,7 @@ class AniMu(commands.Cog, name='AniMu (Anime Music)'):
             )
         except Exception as e:
             await text_channel.send(e)
-            await text_channel.send('```{' + ', '.join(anime['title']['romaji'], anime['idMal'], theme['name']) + '}```')
+            await text_channel.send('```{' + ', '.join((anime['title']['romaji'], anime['idMal'], theme['name'])) + '}```')
         finally:
             await player.disconnect()
             if on_reaction_add:
