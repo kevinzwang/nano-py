@@ -15,7 +15,7 @@ extensions = (
 
 class Nano(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix=None)
+        super().__init__(command_prefix=None, case_insensitive=True)
 
         try:
             with open('config.yml', 'r') as f:
