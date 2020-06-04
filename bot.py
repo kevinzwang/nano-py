@@ -10,6 +10,7 @@ extensions = (
     'cogs.meta',
     'cogs.random',
     'cogs.weeb',
+    'cogs.berkeley',
 )
 
 class Nano(commands.Bot):

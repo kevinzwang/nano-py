@@ -7,7 +7,7 @@ class Random(commands.Cog):
         self.bot = bot
 
     @commands.command(help='Picture of a random cat :3')
-    @commands.cooldown(3, 10)
+    @commands.cooldown(3, 10, commands.BucketType.user)
     async def cat(self, ctx):
         async def randomcat():
             async with self.bot.http_session.get('http://aws.random.cat/meow') as response:
