@@ -100,15 +100,15 @@ class Berkeley(commands.Cog):
             ).add_field(
                 name='Units',
                 inline=True,
-                value=json['course']['units']
+                value=json['course']['units'] or 'Unknown'
             ).add_field(
                 name='Average Grade',
                 inline=True,
-                value=json['course']['letter_average']
+                value=json['course']['letter_average'] or 'Unknown'
             ).add_field(
                 name='Enrolled',
                 inline=True,
-                value=f'{round(json["course"]["enrolled_percentage"] * 100)}%'
+                value=f'{round(json["course"]["enrolled_percentage"] * 100)}%' if json["course"]["enrolled_percentage"] else 'Unknown'
             ))
         else:
             return await ctx.send(f'Course `{search}` not found.')
