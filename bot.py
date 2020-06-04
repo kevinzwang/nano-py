@@ -22,6 +22,7 @@ class Nano(commands.Bot):
                 config = yaml.load(f, Loader=yaml.BaseLoader)
                 self.token = config['token']
                 self.command_suffix = config['suffix']
+                self.client_id = config['client_id']
         except:
             print('Something went wrong. Do you have your bot `token` and `suffix` in a `config.yml` file?')
 
