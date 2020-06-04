@@ -85,7 +85,7 @@ class Berkeley(commands.Cog):
 
             return await ctx.send(embed=discord.Embed(
                 title=f'{abbrev} {number}',
-                description=description,
+                description=json['course']['title'],
                 url=f'https://www.berkeleytime.com/catalog/{abbrev}/{number}/',
                 color=0x003262,
             ).set_footer(
@@ -94,9 +94,9 @@ class Berkeley(commands.Cog):
             ).set_thumbnail(
                 url='https://brand.berkeley.edu/wp-content/uploads/2016/10/ucbseal_139_540.png'
             ).add_field(
-                name='Title',
+                name='Description',
                 inline=False,
-                value=json['course']['title']
+                value=description
             ).add_field(
                 name='Units',
                 inline=True,
