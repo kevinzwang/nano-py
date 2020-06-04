@@ -24,7 +24,7 @@ class Nano(commands.Bot):
                 self.command_suffix = config['suffix']
                 self.client_id = config['client_id']
         except:
-            print('Something went wrong. Do you have your bot `token` and `suffix` in a `config.yml` file?')
+            print('Something went wrong. Do you have your bot `token`, `suffix`, and `client_id` in a `config.yml` file?')
 
         for ext in extensions:
             self.load_extension(ext)
