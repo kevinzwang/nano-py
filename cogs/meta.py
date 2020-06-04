@@ -19,7 +19,8 @@ class Meta(commands.Cog):
 
         await ctx.send(embed=discord.Embed(
             title='Nano',
-            description='Cats, anime, music, Berkeley courses, and more.\nWritten in Python with love <3'
+            description='Cats, anime, music, Berkeley courses, and more.\nWritten in Python with love <3',
+            color=0x8C63D0
         ).add_field(
             name='Owner',
             value=app_info.owner.mention,
