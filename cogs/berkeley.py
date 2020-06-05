@@ -86,7 +86,7 @@ class Berkeley(commands.Cog):
             return await ctx.send(embed=discord.Embed(
                 title=f'{abbrev} {number}',
                 description=json['course']['title'],
-                url=f'https://www.berkeleytime.com/catalog/{abbrev}/{number}/',
+                url=f'https://www.berkeleytime.com/catalog/{abbrev}/{number}/'.replace(' ', '%20'),
                 color=0x003262,
             ).set_footer(
                 text='BerkeleyTime.com', 
