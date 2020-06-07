@@ -34,7 +34,7 @@ class Random(commands.Cog):
         else:
             await ctx.send('We\'ve run out of cats! Please check back later :3')
 
-    @commands.command(aliases=['catgirl'], help='Pictuwe of a wandom anime catgiwl uwu', enabled=False)
+    @commands.command(aliases=['catgirl'], help='Pictuwe of a wandom anime catgiwl uwu')
     @commands.cooldown(3, 10, commands.BucketType.user)
     async def neko(self, ctx):
         async def nekoslife():

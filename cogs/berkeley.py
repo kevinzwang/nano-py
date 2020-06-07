@@ -81,12 +81,11 @@ class Berkeley(commands.Cog):
                     description = description[:256-3] + '...'
 
             abbrev = json['course']['abbreviation']
-            number = json['course']['course_number']
 
             return await ctx.send(embed=discord.Embed(
-                title=f'{abbrev} {number}',
+                title=f'{abbrev} {course_num}',
                 description=json['course']['title'],
-                url=f'https://www.berkeleytime.com/catalog/{abbrev}/{number}/'.replace(' ', '%20'),
+                url=f'https://www.berkeleytime.com/catalog/{abbrev}/{course_num}/'.replace(' ', '%20'),
                 color=0x003262,
             ).set_footer(
                 text='BerkeleyTime.com', 
@@ -133,6 +132,8 @@ layman_to_abbreviation = {
   "CIVE": "CIV ENG",
   "CIV E": "CIV ENG",
   "CHEME": "CHM ENG",
+  "CHEM E": "CHM ENG",
+  "CHMENG": "CHM ENG",
   "CIVENG": "CIV ENG",
   "CLASSICS": "CLASSIC",
   "COGSCI": "COG SCI",

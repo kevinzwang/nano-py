@@ -19,7 +19,7 @@ class Nano(commands.Bot):
 
         try:
             with open('config.yml', 'r') as f:
-                config = yaml.load(f, Loader=yaml.BaseLoader)
+                config = yaml.load(f, Loader=yaml.Loader)
                 self.token = config['token']
                 self.command_suffix = config['suffix']
                 self.client_id = config['client_id']
