@@ -1,6 +1,8 @@
 from discord.ext import commands
 import aiohttp
 import random
+import copy
+import random
 
 class Random(commands.Cog):
     def __init__(self, bot):
@@ -62,6 +64,16 @@ class Random(commands.Cog):
             await ctx.send(img2)
         else:
             await ctx.send('Something went wwong, we\'we wewwy sowwy! Pwease check back latew uwu')
+
+    @commands.command(help='Will you get a cat or a catgirl? Or something else? Try it and find out!')
+    async def maybecat(self, ctx):
+        if random.randrange(200) == 0:
+            return await ctx.send('https://gph.is/2efdN3V')
+
+        msg = copy.copy(ctx.message)
+        msg.content = ctx.prefix + random.choice(['cat', 'neko'])
+        new_ctx = await self.bot.get_context(msg, cls=type(ctx))
+        await self.bot.invoke(new_ctx)
     
 def setup(bot):
     bot.add_cog(Random(bot))
