@@ -1,20 +1,21 @@
 import discord
 from discord.ext import commands
-from discord_slash import cog_ext, SlashContext
+from discord_slash import SlashContext
 import time
+import util
 
 class Meta(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @cog_ext.cog_slash()
+    @util.command()
     async def ping(self, ctx: SlashContext):
         start = time.time()
         msg = await ctx.send('Pong!')
         end = time.time()
         await msg.edit(content=f'Pong! Roundtrip time: {round((end-start)*1000*100)/100}ms')
 
-    @cog_ext.cog_slash()
+    @util.command()
     async def about(self, ctx):
         app_info = await self.bot.application_info()
 

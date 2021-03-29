@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord_slash import cog_ext, SlashContext
+from discord_slash import SlashContext
 from discord_slash.utils.manage_commands import create_option
 from enum import Enum
 import asyncio
@@ -101,7 +101,7 @@ class Weeb(commands.Cog):
         else:
             return ' '.join([word.capitalize() for word in fmt.split('_')])
 
-    @cog_ext.cog_slash(
+    @util.command(
         name='anime',
         description='Search for an anime and display its info',
         options=[
@@ -130,7 +130,7 @@ class Weeb(commands.Cog):
             if animu := self.bot.get_cog('Aniμ'):
                 await animu.play_from_anime(ctx, msg, json)
 
-    @cog_ext.cog_slash(
+    @util.command(
         name='animelist',
         description='Get info about an AniList user\'s anime list',
         options=[
@@ -192,7 +192,7 @@ class Weeb(commands.Cog):
         else:
             await ctx.send('No AniList user found')
 
-    @cog_ext.cog_slash(
+    @util.command(
         name='manga',
         description='Search for a manga and display its info',
         options=[
@@ -218,7 +218,7 @@ class Weeb(commands.Cog):
             else:
                 await ctx.send(site_url)
 
-    @cog_ext.cog_slash(
+    @util.command(
         name='mangalist',
         description='Get info about an AniList user\'s manga list',
         options=[

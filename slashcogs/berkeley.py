@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands, tasks
-from discord_slash import cog_ext, SlashContext
+from discord_slash import SlashContext
 from discord_slash.utils.manage_commands import create_option
 import aiohttp
 import asyncio
@@ -49,7 +49,7 @@ class Berkeley(commands.Cog):
         else:
             return description[:256-3] + '...'
 
-    @cog_ext.cog_slash(
+    @util.command(
         name='course',
         description='Get info about a UC Berkeley class',
         options=[
