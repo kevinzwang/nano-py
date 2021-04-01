@@ -51,7 +51,7 @@ class Berkeley(commands.Cog):
 
     @util.command(
         name='course',
-        description='Get info about a UC Berkeley class',
+        description='Get info about a Stanfurd class',
         options=[
             create_option(
                 name='search',
@@ -103,11 +103,11 @@ class Berkeley(commands.Cog):
             return await ctx.send(embed=discord.Embed(
                 title=f'{abbrev} {course_num}',
                 description=json['course']['title'],
-                url=f'https://berkeleytime.com/catalog/{abbrev}/{course_num}/'.replace(' ', '%20'),
-                color=0x003262,
+                url=f'https://stanfurdtime.com/catalog/{abbrev}/{course_num}/'.replace(' ', '%20'),
+                color=0x8C1515,
             ).set_footer(
-                text='BerkeleyTime.com', 
-                icon_url='https://berkeleytime.com/favicon.png'
+                text='StanfurdTime.com', 
+                icon_url='https://stanfurdtime.com/favicon.png'
             ).add_field(
                 name='Description',
                 inline=False,
@@ -119,11 +119,11 @@ class Berkeley(commands.Cog):
             ).add_field(
                 name='Average Grade',
                 inline=True,
-                value=json['course']['letter_average'] or 'Unknown'
+                value='A+'
             ).add_field(
                 name='Enrolled',
                 inline=True,
-                value=enrolled
+                value=f'0% (0/{json["course"]["enrolled_max"]})'
             ))
         else:
             return await ctx.send(f'Course `{search}` not found.')
