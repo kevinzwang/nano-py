@@ -9,16 +9,15 @@ class Random(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def _choice(self, func1, func2):
-        if random.choice([True, False]):
-            func1, func2 = func2, func1
-
-        try:
+    async def _choose(self, *choices):
+        if len(choices) > 0:
+            func = random.choice(choices)
+            print(func)
             try:
-                return await func1()
+                return await func()
             except:
-                return await func2()
-        except:
+                return self._choose([c for c in choices if c != func])
+        else:
             return None
 
     async def _randomcat(self):
@@ -44,6 +43,12 @@ class Random(commands.Cog):
             if response.status == 200:
                 json = await response.json()
                 return 'https://nekos.moe/image/' + json['images'][0]['id']
+    
+    async def _nekolove(self):
+        async with self.bot.http_session.get('https://neko-love.xyz/api/v1/neko') as response:
+            if response.status == 200:
+                json = await response.json()
+                return json['url']
 
 
     @util.command(
@@ -51,7 +56,7 @@ class Random(commands.Cog):
         description='Picture of a random cat :3')
     @util.cooldown(3, 10)
     async def cat(self, ctx):
-        if img := await self._choice(self._randomcat, self._thecatapi):
+        if img := await self._choose(self._randomcat, self._thecatapi):
             await ctx.send(img)
         else:
             await ctx.send('We\'ve run out of cats! Please check back later :3')
@@ -61,7 +66,7 @@ class Random(commands.Cog):
         description='Pictuwe of a wandom anime catgiwl uwu')
     @util.cooldown(3, 10)
     async def neko(self, ctx):
-        if img := await self._choice(self._nekoslife, self._nekosmoe):
+        if img := await self._choose(self._nekoslife, self._nekosmoe, self._nekolove):
             await ctx.send(img)
         else:
             await ctx.send('Something went wwong, we\'we wewwy sowwy! Pwease check back latew uwu')
@@ -72,12 +77,12 @@ class Random(commands.Cog):
     @util.cooldown(3, 10)
     async def maybecat(self, ctx):
         async def cat():
-            return await self._choice(self._randomcat, self._thecatapi)
+            return await self._choose(self._randomcat, self._thecatapi)
 
         async def neko():
-            return await self._choice(self._nekoslife, self._nekosmoe)
+            return await self._choose(self._nekoslife, self._nekosmoe, self._nekolove)
 
-        if img := await self._choice(cat, neko):
+        if img := await self._choose(cat, neko):
             await ctx.send(img)
         else:
             await ctx.send('The cat coin landed on its edge! Something fishy is going on...')
