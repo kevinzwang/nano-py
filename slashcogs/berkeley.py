@@ -128,6 +128,12 @@ class Berkeley(commands.Cog):
         else:
             return await ctx.send(f'Course `{search}` not found.')
 
+    @util.command(description='[OWNER ONLY] Refreshes the course catalog')
+    @util.is_owner
+    async def refreshcatalog(self, ctx):
+        await self._get_catalog()
+        await ctx.send('Catalog successfully updated. Go bears!')
+
 layman_to_abbreviation = {
   "ASTRO": "ASTRON",
   "CS": "COMPSCI",

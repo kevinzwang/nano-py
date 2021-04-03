@@ -14,7 +14,7 @@ extensions = (
 )
 
 def main():
-    bot = commands.Bot(command_prefix=None, help_command=None)
+    bot = commands.Bot(command_prefix='/', help_command=None)
     slash = SlashCommand(bot, sync_commands=True)
 
     try:
