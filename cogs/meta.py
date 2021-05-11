@@ -31,7 +31,7 @@ class Meta(commands.Cog):
             inline=True
         ).add_field(
             name='Invite',
-            value=f'[Click Here]({discord.utils.oauth_url(self.bot.client_id)})',
+            value=f'[Click Here]({discord.utils.oauth_url(self.bot.client_id, scopes=("bot", "applications.commands"))})',
             inline=True
         ).add_field(
             name='Source',
