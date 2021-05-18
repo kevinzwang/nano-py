@@ -12,7 +12,6 @@ class Random(commands.Cog):
     async def _choose(self, *choices):
         if len(choices) > 0:
             func = random.choice(choices)
-            print(func)
             try:
                 return await func()
             except:
