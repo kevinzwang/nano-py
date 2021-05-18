@@ -37,7 +37,7 @@ class Meta(commands.Cog):
             inline=True
         ).add_field(
             name='Source',
-            value='https://github.com/kevinzwang/nano-py',
+            value='Ask owner',
             inline=True
         ).set_thumbnail(url=self.bot.user.avatar_url))
 

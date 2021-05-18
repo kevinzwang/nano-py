@@ -3,8 +3,8 @@ async-timeout==3.0.1
 attrs==20.3.0
 beautifulsoup4==4.9.3
 chardet==4.0.0
-discord-py-slash-command==1.1.0
-discord.py==1.6.0
+discord-py-slash-command==1.1.2
+discord.py==1.7.2
 html2text==2020.1.16
 idna==3.1
 multidict==5.1.0
