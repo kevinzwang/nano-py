@@ -1,16 +1,19 @@
 import discord
 from discord.ext import commands
+from discord_slash import SlashContext
+from discord_slash.utils.manage_commands import create_option
 from enum import Enum
 import asyncio
 import html2text
 import re
 import math
+import util
 
 class Weeb(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    async def _search(self, ctx, media_type, search):
+    async def _search(self, ctx, media_type, search, first):
         page = 1
         msg = None
         while True:
@@ -19,7 +22,7 @@ class Weeb(commands.Cog):
                 'variables': {
                     'search': search,
                     'page': page,
-                    'perPage': 5
+                    'perPage': 1 if first else 5
                 }
             }) as response: json = await response.json()
 
@@ -30,7 +33,7 @@ class Weeb(commands.Cog):
                 return None, msg
 
             if page == 1 and len(page_json['media']) == 1:
-                return page_json['media'][0]['id'], None
+                return page_json['media'][0]['siteUrl'], None
 
             embed = discord.Embed(
                 title=f'Search results for: \'{search}\' ({page}/{page_json["pageInfo"]["lastPage"]})',
@@ -74,7 +77,7 @@ class Weeb(commands.Cog):
             if index < 5:
                 for emoji in search_reactions:
                     self.bot.loop.create_task(msg.remove_reaction(emoji, self.bot.user))
-                return page_json['media'][index]['id'], msg
+                return page_json['media'][index]['siteUrl'], msg
             elif reaction.emoji == '⬅️':
                 page -= 1
             elif reaction.emoji == '➡️':
@@ -85,143 +88,7 @@ class Weeb(commands.Cog):
 
                 await msg.edit(content='Search cancelled', embed=None)
                 return None, msg
-                
-    async def _anime_embed(self, json):
-        anime = json['data']['Media']
-
-        title = anime['title']['romaji']
-        # cuz frickin kakushigoto decided they wanted to add a (TV) in their title already
-        if not title.endswith(fmt := f'({self._format_mediaformat(anime["format"])})'): 
-            title += ' ' + fmt
-
-        embed = discord.Embed(
-            title=title,
-            description=self._format_description(anime['description']),
-            url=anime['siteUrl'],
-            color=anilist_colors['anime']
-        ).set_footer(
-            text='AniList.co', 
-            icon_url=icon_url
-        ).set_thumbnail(url=anime['coverImage']['extraLarge'])
-
-        if anime['status'] == 'RELEASING':
-            if anime['nextAiringEpisode']['episode'] == 1:
-                embed.add_field(
-                    name='Premieres', 
-                    inline=True, 
-                    value=self._format_time(anime['nextAiringEpisode']['timeUntilAiring']/60)
-                )
-            else:
-                embed.add_field(
-                    name='Next Episode', 
-                    inline=True, 
-                    value=f'Ep {anime["nextAiringEpisode"]["episode"]}: {self._format_time(anime["nextAiringEpisode"]["timeUntilAiring"]/60)}'
-                )
-        elif anime['season']:
-            embed.add_field(
-                name='Season', 
-                inline=True, 
-                value=f'{anime["season"].capitalize()} {anime["seasonYear"]}'
-            )
-        else:
-            embed.add_field(
-                name='Status', 
-                inline=True, 
-                value=self._format_mediaformat(anime['status'])
-            )
-
-        if anime['episodes'] or anime['duration']:
-            if anime['episodes'] and anime['episodes'] > 1:
-                embed.add_field(
-                    name='Episodes', 
-                    inline=True, 
-                    value=anime['episodes']
-                )
-            elif anime['duration']:
-                embed.add_field(
-                    name='Duration', 
-                    inline=True, 
-                    value=self._format_time(anime['duration'])
-                )
-        
-        embed.add_field(
-            name='Mean Score', 
-            inline=True, 
-            value=f'{anime["meanScore"]}%' if anime['meanScore'] else shrug
-        ).add_field(
-            name='Genres', 
-            inline=True, 
-            value=', '.join(anime['genres']) if anime['genres'] else 'none'
-        )
-
-        return embed
-
-    async def _manga_embed(self, json):
-        manga = json['data']['Media']
-        return discord.Embed(
-            title=f'{manga["title"]["romaji"]} ({self._format_mediaformat(manga["format"])})',
-            description=self._format_description(manga['description']),
-            url=manga['siteUrl'],
-            color=anilist_colors['manga']
-        ).set_footer(
-            text='AniList.co', 
-            icon_url=icon_url
-        ).set_thumbnail(
-            url=manga['coverImage']['extraLarge']
-        ).add_field(
-            name='Status',
-            inline=True,
-            value=self._format_mediaformat(manga['status'])
-        ).add_field(
-            name='Chapters',
-            inline=True,
-            value=manga['chapters'] if manga['chapters'] else shrug
-        ).add_field(
-            name='Volumes',
-            inline=True,
-            value=manga['volumes'] if manga['volumes'] else shrug
-        ).add_field(
-            name='Mean Score', 
-            inline=True, 
-            value=f'{manga["meanScore"]}%' if manga['meanScore'] else shrug
-        ).add_field(
-            name='Genres', 
-            inline=True, 
-            value=', '.join(manga['genres']) if manga['genres'] else 'none'
-        )
     
-    def _format_time(self, time): 
-        """
-        Takes a time in minutes and converts it into the format '[days]d [hours]h [minutes]m', 
-        excluding the days or hours if less than a day or hour respectively.
-        """
-        time= math.floor(time)
-        formatted = ''
-        
-        day_minutes = 24*60
-        hour_minutes = 60
-
-        if time >= day_minutes:
-            formatted += f'{math.floor(time / day_minutes)}d '
-        
-        if time >= hour_minutes:
-            formatted += f'{math.floor((time % day_minutes) / hour_minutes)}h '
-
-        formatted += f'{time % hour_minutes}m'
-
-        return formatted
-
-    def _format_description(self, description):
-        if not description:
-            return 'No description.'
-
-        description = html2text.html2text(description).replace('\n', ' ').replace('  ', ' ')
-
-        if len(description) < 256:
-            return description
-        else:
-            return description[:256-3] + '...'
-
     def _format_mediaformat(self, fmt):
         """
         Converts the anilist media format (all caps with underscores), to a more human-friendly
@@ -234,50 +101,52 @@ class Weeb(commands.Cog):
         else:
             return ' '.join([word.capitalize() for word in fmt.split('_')])
 
-    @commands.command(aliases=['a'], help='Info about an anime')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def anime(self, ctx, *, search):
-        anime_id, msg = await self._search(ctx, 'anime', search)
-        if anime_id:
-            async with self.bot.http_session.post(api_url, json={
-                'query': queries['anime_info'],
-                'variables': {
-                    'id': anime_id
-                }
-            }) as response: json = await response.json()
-
+    @util.command(
+        name='anime',
+        description='Search for an anime and display its info',
+        options=[
+            create_option(
+                name='search',
+                description='Anime to search for',
+                option_type=3,
+                required=True
+            ),
+            create_option(
+                name='first',
+                description='Display the first search result only',
+                option_type=5,
+                required=False
+            )
+        ])
+    @util.cooldown(3, 10)
+    async def anime(self, ctx, search, first=False):
+        site_url, msg = await self._search(ctx, 'anime', search, first)
+        if site_url:
             if msg:
-                await msg.edit(embed=await self._anime_embed(json))
+                await msg.edit(content=site_url, embed=None)
             else:
-                msg = await ctx.send(embed=await self._anime_embed(json))
+                msg = await ctx.send(site_url)
 
             if animu := self.bot.get_cog('Aniμ'):
                 await animu.play_from_anime(ctx, msg, json)
 
-    @commands.command(aliases=['qa'], help='Gets you the first anime result.\nYou can also do "((search))"')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def quickanime(self, ctx, *, search):
-        async with self.bot.http_session.post(api_url, json={
-            'query': queries['quick_anime'],
-            'variables': {
-                'search': search
-            }
-        }) as response: json = await response.json()
-
-        if json['data']['Media']:
-            msg = await ctx.send(embed=await self._anime_embed(json))
-            if animu := self.bot.get_cog('Aniμ'):
-                await animu.play_from_anime(ctx, msg, json)
-        else:
-            await ctx.send('No anime found.')
-
-    @commands.command(aliases=['anilist', 'al'], help='Info about an AniList user\'s anime list')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def animelist(self, ctx, name):
+    @util.command(
+        name='animelist',
+        description='Get info about an AniList user\'s anime list',
+        options=[
+            create_option(
+                name='username',
+                description='The username on AniList',
+                option_type=3,
+                required=True
+            )
+        ])
+    @util.cooldown(3, 10)
+    async def animelist(self, ctx, username):
         async with self.bot.http_session.post(api_url, json={
             'query': queries['anime_list'],
             'variables': {
-                'name': name
+                'name': username
             }
         }) as response: json = await response.json()
             
@@ -323,44 +192,49 @@ class Weeb(commands.Cog):
         else:
             await ctx.send('No AniList user found')
 
-    @commands.command(aliases=['m'], help='Info about a manga')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def manga(self, ctx, *, search):
-        manga_id, msg = await self._search(ctx, 'manga', search)
-        if manga_id:
-            async with self.bot.http_session.post(api_url, json={
-                'query': queries['manga_info'],
-                'variables': {
-                    'id': manga_id
-                }
-            }) as response: json = await response.json()
-
+    @util.command(
+        name='manga',
+        description='Search for a manga and display its info',
+        options=[
+            create_option(
+                name='search',
+                description='Manga to search for',
+                option_type=3,
+                required=True
+            ),
+            create_option(
+                name='first',
+                description='Display the first search result only',
+                option_type=5,
+                required=False
+            )
+        ])
+    @util.cooldown(3, 10)
+    async def manga(self, ctx, search, first=False):
+        site_url, msg = await self._search(ctx, 'manga', search, first)
+        if site_url:
             if msg:
-                await msg.edit(embed=await self._manga_embed(json))
+                await msg.edit(content=site_url, embed=None)
             else:
-                await ctx.send(embed=await self._manga_embed(json))
+                await ctx.send(site_url)
 
-    @commands.command(aliases=['qm'], help='Gets you the first manga result.\nYou can also do "<<search>>"')
-    async def quickmanga(self, ctx, *, search):
-        async with self.bot.http_session.post(api_url, json={
-            'query': queries['quick_manga'],
-            'variables': {
-                'search': search
-            }
-        }) as response: json = await response.json()
-
-        if json['data']['Media']:
-            await ctx.send(embed=await self._manga_embed(json))
-        else:
-            await ctx.send('No manga found.')
-
-    @commands.command(aliases=['ml'], help='Info about an AniList user\'s manga list')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def mangalist(self, ctx, name):
+    @util.command(
+        name='mangalist',
+        description='Get info about an AniList user\'s manga list',
+        options=[
+            create_option(
+                name='username',
+                description='The username on AniList',
+                option_type=3,
+                required=True
+            )
+        ])
+    @util.cooldown(3, 10)
+    async def mangalist(self, ctx, username):
         async with self.bot.http_session.post(api_url, json={
             'query': queries['manga_list'],
             'variables': {
-                'name': name
+                'name': username
             }
         }) as response: json = await response.json()
         
@@ -443,68 +317,12 @@ query AnimeSearch($search: String, $page: Int, $perPage: Int) {
       hasNextPage
     }
     media(search: $search, type: ANIME) {
-      id
       title {
         romaji
       }
       format
       status
       siteUrl
-    }
-  }
-}
-''',
-
-    'anime_info':
-'''
-query AnimeInfo($id: Int) {
-  Media(id: $id) {
-    title {
-      romaji
-    }
-    format
-    status
-    description(asHtml: false)
-    season
-    seasonYear
-    episodes
-    duration
-    coverImage {
-      extraLarge
-    }
-    genres
-    meanScore
-    siteUrl
-    nextAiringEpisode {
-      timeUntilAiring
-      episode
-    }
-  }
-}
-''',
-    'quick_anime':
-'''
-query QuickAnime($search: String) {
-  Media(search: $search, type: ANIME) {
-    title {
-      romaji
-    }
-    format
-    status
-    description(asHtml: false)
-    season
-    seasonYear
-    episodes
-    duration
-    coverImage {
-      extraLarge
-    }
-    genres
-    meanScore
-    siteUrl
-    nextAiringEpisode {
-      timeUntilAiring
-      episode
     }
   }
 }
@@ -548,7 +366,6 @@ query MangaSearch($search: String, $page: Int, $perPage: Int) {
       hasNextPage
     }
     media(search: $search, type: MANGA) {
-      id
       title {
         romaji
       }
@@ -556,48 +373,6 @@ query MangaSearch($search: String, $page: Int, $perPage: Int) {
       status
       siteUrl
     }
-  }
-}
-''',
-    'manga_info':
-'''
-query MangaInfo($id: Int) {
-  Media(id: $id) {
-    title {
-      romaji
-    }
-    format
-    status
-    description(asHtml: false)
-    chapters
-    volumes
-    coverImage {
-      extraLarge
-    }
-    genres
-    meanScore
-    siteUrl
-  }
-}
-''',
-    'quick_manga':
-'''
-query QuickManga($search: String) {
-  Media(search: $search, type: MANGA) {
-    title {
-      romaji
-    }
-    format
-    status
-    description(asHtml: false)
-    chapters
-    volumes
-    coverImage {
-      extraLarge
-    }
-    genres
-    meanScore
-    siteUrl
   }
 }
 ''',
