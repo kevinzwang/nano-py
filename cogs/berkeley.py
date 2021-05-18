@@ -1,7 +1,10 @@
 import discord
 from discord.ext import commands, tasks
+from discord_slash import SlashContext
+from discord_slash.utils.manage_commands import create_option
 import aiohttp
 import asyncio
+import util
 
 class Berkeley(commands.Cog):
     def __init__(self, bot):
@@ -10,7 +13,7 @@ class Berkeley(commands.Cog):
         self._get_catalog_loop.start()
 
     async def _get_catalog(self):
-        async with self.bot.http_session.get('https://www.berkeleytime.com/api/catalog/catalog_json/') as response:
+        async with self.bot.http_session.get('https://berkeleytime.com/api/catalog/catalog_json/') as response:
             json = await response.json()
 
         new_catalog = {}
@@ -46,9 +49,19 @@ class Berkeley(commands.Cog):
         else:
             return description[:256-3] + '...'
 
-    @commands.command(name='course', aliases=['class', 'c'], help='Info about a Berkeley class')
-    @commands.cooldown(3, 10, commands.BucketType.user)
-    async def course(self, ctx, *, search):
+    @util.command(
+        name='course',
+        description='Get info about a UC Berkeley class',
+        options=[
+            create_option(
+                name='search',
+                description='course to search for',
+                option_type=3,
+                required=True
+            )
+        ])
+    @util.cooldown(3, 10)
+    async def course(self, ctx, search):
         search_upper = search.strip().upper()
         layman = False
         longest_abbrev = ''
@@ -69,7 +82,7 @@ class Berkeley(commands.Cog):
 
         if course_id := self.catalog[longest_abbrev].get(course_num):
             async with self.bot.http_session.get(
-                'https://www.berkeleytime.com/api/catalog/catalog_json/course_box/', 
+                'https://berkeleytime.com/api/catalog/catalog_json/course_box/', 
                 params={'course_id': course_id}
             ) as response:
                 json = await response.json()
@@ -81,17 +94,20 @@ class Berkeley(commands.Cog):
                     description = description[:256-3] + '...'
 
             abbrev = json['course']['abbreviation']
+            
+            if json["course"]["enrolled_percentage"] and json["course"]["enrolled_percentage"] != -1:
+                enrolled = f'{round(json["course"]["enrolled_percentage"] * 100)}% ({json["course"]["enrolled"]}/{json["course"]["enrolled_max"]})'
+            else:
+                enrolled = 'Unknown'
 
             return await ctx.send(embed=discord.Embed(
                 title=f'{abbrev} {course_num}',
                 description=json['course']['title'],
-                url=f'https://www.berkeleytime.com/catalog/{abbrev}/{course_num}/'.replace(' ', '%20'),
+                url=f'https://berkeleytime.com/catalog/{abbrev}/{course_num}/'.replace(' ', '%20'),
                 color=0x003262,
             ).set_footer(
                 text='BerkeleyTime.com', 
-                icon_url='https://www.berkeleytime.com/favicon.png'
-            ).set_thumbnail(
-                url='https://brand.berkeley.edu/wp-content/uploads/2016/10/ucbseal_139_540.png'
+                icon_url='https://berkeleytime.com/favicon.png'
             ).add_field(
                 name='Description',
                 inline=False,
@@ -107,17 +123,16 @@ class Berkeley(commands.Cog):
             ).add_field(
                 name='Enrolled',
                 inline=True,
-                value=f'{round(json["course"]["enrolled_percentage"] * 100)}%' if json["course"]["enrolled_percentage"] else 'Unknown'
+                value=enrolled
             ))
         else:
             return await ctx.send(f'Course `{search}` not found.')
 
-    @commands.command(help='Refreshes the course catalog.')
-    @commands.is_owner()
-    async def refresh_catalog(self, ctx):
+    @util.command(description='[OWNER ONLY] Refreshes the course catalog')
+    @util.is_owner
+    async def refreshcatalog(self, ctx):
         await self._get_catalog()
         await ctx.send('Catalog successfully updated. Go bears!')
-
 
 layman_to_abbreviation = {
   "ASTRO": "ASTRON",
